@@ -251,13 +251,26 @@ static bool polari_lum_preset_tables_equal(void)
         sizeof(s_blPwmData.luminanceLevels)) == 0;
 }
 
+/* Slider position from raw top PWM when brightnessToLuminance() under-reads vs actual duty. */
+static u32 polari_luminance_from_top_pwm_linear(void)
+{
+    u32 minT = getMinLuminancePreset(true);
+    u32 maxT = getMaxLuminancePreset(true);
+
+    if (maxT <= minT)
+        return minT;
+    u32 raw = REG32(0x10202200 + 0x40) & 0x3FFu;
+    float frac = (float)raw / (float)0x3FFu;
+
+    return minT + (u32)((float)(maxT - minT) * frac + 0.5f);
+}
+
 /*
  * The OS uses one luminance target for both panels. After loading separate top/bottom
- * calibration, map the current global luminance onto the bottom preset range and poke HW.
+ * calibration, map the global top luminance onto the bottom preset range.
  *
- * Called a few seconds after boot (menu thread) so PWM/luminance reads are stable.
- * MMIO only — no gspLcdInit. Uses setBrightnessAlt (no duty clamp): capping valBot to valTop
- * forced the same PWM on both panels; inverse luminance then differs per curve (~52 on bottom).
+ * Must use GSPLCD_SetBrightnessRaw (same as "Change screen brightness"): MMIO-only pokes are
+ * overwritten by the LCD/GSP pipeline, which then keeps luminance stuck near ~50 in software.
  */
 void polari_apply_startup_luminance_split(void)
 {
@@ -301,6 +314,13 @@ void polari_apply_startup_luminance_split(void)
             break;
     }
 
+    {
+        u32 Llin = polari_luminance_from_top_pwm_linear();
+
+        if (Llin > L)
+            L = Llin;
+    }
+
     if (L < minT)
         return;
 
@@ -314,7 +334,17 @@ void polari_apply_startup_luminance_split(void)
         lumBot = minB + (u32)(num / den);
     }
 
-    setBrightnessAlt(L, lumBot);
+    svcKernelSetState(0x10000, 2);
+    if (R_SUCCEEDED(gspLcdInit())) {
+        if (L >= minT && lumBot >= minB) {
+            GSPLCD_SetBrightnessRaw(BIT(GSP_SCREEN_TOP), L);
+            GSPLCD_SetBrightnessRaw(BIT(GSP_SCREEN_BOTTOM), lumBot);
+        } else
+            setBrightnessAlt(L, lumBot);
+        gspLcdExit();
+    } else
+        setBrightnessAlt(L, lumBot);
+    svcKernelSetState(0x10000, 2);
 }
 
 void Luminance_RecalibrateBrightnessDefaults(void)
@@ -331,8 +361,6 @@ void Luminance_RecalibrateBrightnessDefaults(void)
     u16 *activeRow;
 
     luminance_load_pwm_data();
-
-    s_blPwmData.brightnessMin = 1;
 
     do
     {
@@ -382,6 +410,9 @@ void Luminance_RecalibrateBrightnessDefaults(void)
             s_blPwmData.polari_ext_magic = POLARI_BL_PWM_EXT_MAGIC;
             polari_pwm_sync_row(s_blPwmData.luminanceLevels);
             polari_pwm_sync_row(s_blPwmData.luminanceLevelsBot);
+            /* Older builds forced brightnessMin=1 into CFG; that confuses the OS brightness path. */
+            if (s_blPwmData.brightnessMin < 13)
+                s_blPwmData.brightnessMin = 13;
             cfguInit();
             if (R_SUCCEEDED(CFG_SetConfigInfoBlk8(BL_PWM_CFG_SAVE_SIZE, 0x50002, &s_blPwmData)))
                 CFG_UpdateConfigSavegame();
