@@ -245,6 +245,29 @@ void setBrightnessAlt(u32 lumTop, u32 lumBot)
     REG32(regbaseBot + offset) = (REG32(regbaseBot + offset) & ~0x3FFu) | valBot;
 }
 
+/*
+ * Startup split: bottom polynomial can map the same "luminance" to higher PWM than top — cap
+ * bottom duty so the panel is never brighter than the top (user expects dimmer bottom).
+ */
+static void polari_set_split_brightness_mmio(u32 lumTop, u32 lumBot)
+{
+    u32 regbaseTop = 0x10202200;
+    u32 regbaseBot = 0x10202A00;
+    u32 offset = 0x40;
+    const float *coeffsTop = s_blPwmData.coeffs[1];
+    const float *coeffsBot = s_blPwmData.coeffs[0];
+    float ratioTop = getPwmRatio(s_blPwmData.brightnessMax, REG32(regbaseTop + 0x44));
+    float ratioBot = getPwmRatio(s_blPwmData.brightnessMax, REG32(regbaseBot + 0x44));
+    u32 valTop = luminanceToBrightness(lumTop, coeffsTop, 0, ratioTop) & 0x3FFu;
+    u32 valBot = luminanceToBrightness(lumBot, coeffsBot, 0, ratioBot) & 0x3FFu;
+
+    if (valBot > valTop)
+        valBot = valTop;
+
+    REG32(regbaseTop + offset) = (REG32(regbaseTop + offset) & ~0x3FFu) | valTop;
+    REG32(regbaseBot + offset) = (REG32(regbaseBot + offset) & ~0x3FFu) | valBot;
+}
+
 static bool polari_lum_preset_tables_equal(void)
 {
     return memcmp(s_blPwmData.luminanceLevels, s_blPwmData.luminanceLevelsBot,
@@ -255,9 +278,8 @@ static bool polari_lum_preset_tables_equal(void)
  * The OS uses one luminance target for both panels. After loading separate top/bottom
  * calibration, map the current global luminance onto the bottom preset range and poke HW.
  *
- * Cold-boot: sample paired (top==bottom) luminance and map bottom to its preset range.
- * Do not call gspLcdInit here — extra LCD sessions during early Rosalina init can hang the system.
- * Use setBrightnessAlt (full REG32 duty, bits 9:0); the old u8-only write was wrong and unsafe.
+ * Called a few seconds after boot (menu thread) so PWM/luminance reads are stable.
+ * MMIO only — no gspLcdInit. Bottom duty capped to not exceed top (polynomial mismatch fix).
  */
 void polari_apply_startup_luminance_split(void)
 {
@@ -281,20 +303,20 @@ void polari_apply_startup_luminance_split(void)
     if (maxT <= minT || maxB <= minB)
         return;
 
-    svcSleepThread(1200 * 1000LL);
+    svcSleepThread(400 * 1000LL);
 
     for (r = 0; r < 2; r++) {
         best = 0;
-        for (i = 0; i < 6; i++) {
+        for (i = 0; i < 5; i++) {
             t = getCurrentLuminance(true);
             b = getCurrentLuminance(false);
             if (t == b && t > best)
                 best = t;
-            svcSleepThread(200 * 1000LL);
+            svcSleepThread(150 * 1000LL);
         }
         L = best;
         if (r == 0 && maxT > minT + 80 && L < minT + 40)
-            svcSleepThread(2000 * 1000LL);
+            svcSleepThread(1500 * 1000LL);
         else
             break;
     }
@@ -312,7 +334,10 @@ void polari_apply_startup_luminance_split(void)
         lumBot = minB + (u32)(num / den);
     }
 
-    setBrightnessAlt(L, lumBot);
+    if (lumBot > L)
+        lumBot = L;
+
+    polari_set_split_brightness_mmio(L, lumBot);
 }
 
 void Luminance_RecalibrateBrightnessDefaults(void)
