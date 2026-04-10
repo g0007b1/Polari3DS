@@ -234,8 +234,11 @@ void RosalinaMenu_ShowCredits(void)
     while (!(waitInput() & KEY_B) && !menuShouldExit);
 }
 
-/* Same 3-state cycle as the in-menu Y handler (both -> top only -> bottom only). */
-static void polari_brightness_menu_y_cycle(void)
+/*
+ * Backlight 3-state cycle (both on -> top only -> bottom only -> ...).
+ * GSPLCD must only be used with gsp:Lcd session active — see below.
+ */
+static void polari_brightness_menu_y_apply_state(void)
 {
     u8 result, botStatus, topStatus;
 
@@ -247,7 +250,6 @@ static void polari_brightness_menu_y_cycle(void)
     botStatus = (result >> 5) & 1;
     topStatus = (result >> 6) & 1;
 
-    gspLcdInit();
     if (botStatus == 1 && topStatus == 1)
         GSPLCD_PowerOffBacklight(BIT(GSP_SCREEN_BOTTOM));
     else if (botStatus == 0 && topStatus == 1)
@@ -257,7 +259,18 @@ static void polari_brightness_menu_y_cycle(void)
     }
     else if (topStatus == 0)
         GSPLCD_PowerOnBacklight(BIT(GSP_SCREEN_TOP));
+}
+
+/* Before START: GSP is blocked for Rosalina drawing — match menu.c (St+Se) pattern. */
+static void polari_brightness_menu_y_cycle_intro(void)
+{
+    if (!hasTopScreen)
+        return;
+    svcKernelSetState(0x10000, 2);
+    gspLcdInit();
+    polari_brightness_menu_y_apply_state();
     gspLcdExit();
+    svcKernelSetState(0x10000, 2);
 }
 
 void Polari_ApplyDefaultScreenBacklights(void)
@@ -271,6 +284,7 @@ void Polari_ApplyDefaultScreenBacklights(void)
         return;
     if (!isServiceUsable("gsp::Lcd"))
         return;
+    svcKernelSetState(0x10000, 2);
     gspLcdInit();
     if (m == 1u)
     {
@@ -283,6 +297,7 @@ void Polari_ApplyDefaultScreenBacklights(void)
         GSPLCD_PowerOffBacklight(BIT(GSP_SCREEN_TOP));
     }
     gspLcdExit();
+    svcKernelSetState(0x10000, 2);
 }
 
 void RosalinaMenu_ChangeScreenBrightness(void)
@@ -354,7 +369,7 @@ void RosalinaMenu_ChangeScreenBrightness(void)
         u32 pressed = waitInputWithTimeout(1000);
 
         if ((pressed & KEY_Y) && hasTopScreen)
-            polari_brightness_menu_y_cycle();
+            polari_brightness_menu_y_cycle_intro();
 
         if (pressed & KEY_START)
             break;
@@ -457,7 +472,7 @@ void RosalinaMenu_ChangeScreenBrightness(void)
         }
         
         if ((pressed & KEY_Y) && hasTopScreen)
-            polari_brightness_menu_y_cycle();
+            polari_brightness_menu_y_apply_state();
 
         if (pressed & KEY_B)
             break;
