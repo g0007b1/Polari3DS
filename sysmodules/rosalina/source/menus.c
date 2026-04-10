@@ -39,7 +39,6 @@
 #include "luma_config.h"
 #include "luma_shared_config.h"
 #include "menus/config_extra.h"
-#include "polari_backlight.h"
 #include "menus/screen_filters.h"
 #include "luminance.h"
 #include "plugin.h"
