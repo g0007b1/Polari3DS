@@ -26,6 +26,10 @@ jobs:
     # Luma3DS workflow used a hardcoded path; forks live under /__w/<owner>/<repo>
     - name: safedir
       run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+    # Image bundles old libctru.a without QTM symbols (QTMS_*, qtmGetSessionHandle, …).
+    # Polari needs a current 3ds-libctru so link matches the QTM API used in Rosalina.
+    - name: Upgrade devkitPro packages
+      run: dkp-pacman -Syu --noconfirm
     - name: Build
       run: make -j$(nproc --all)
     - uses: actions/upload-artifact@v4
