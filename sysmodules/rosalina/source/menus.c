@@ -52,6 +52,11 @@
 #include "config_template_ini.h"
 #include "configExtra_ini.h"
 
+/* Raw brightness cap when holding L/R (extended). Default stock Polari: 172. */
+#ifndef POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX
+#define POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX 289
+#endif
+
 Menu rosalinaMenu = {
     "Rosalina menu",
     {
@@ -247,10 +252,10 @@ void RosalinaMenu_ChangeScreenBrightness(void)
     u32 luminanceBot = getCurrentLuminance(false);
     u32 minLum = getMinLuminancePreset();
     u32 maxLum = getMaxLuminancePreset();
-    u32 trueMax = 172; // https://www.3dbrew.org/wiki/GSPLCD:SetBrightnessRaw
+    u32 trueMax = POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX; // https://www.3dbrew.org/wiki/GSPLCD:SetBrightnessRaw
     u32 trueMin = 0;
     // hacky but N3DS coeffs for top screen don't seem to work and O3DS coeffs when using N3DS return 173 max brightness
-    luminanceTop = luminanceTop == 173 ? trueMax : luminanceTop;
+    luminanceTop = luminanceTop == 173 ? 172 : luminanceTop;
 
     do
     {
@@ -261,9 +266,10 @@ void RosalinaMenu_ChangeScreenBrightness(void)
             10,
             posY,
             COLOR_WHITE,
-            "Preset: %lu to %lu, Extended: 0 to 172.\n",
+            "Preset: %lu to %lu, Extended: 0 to %u.\n",
             minLum,
-            maxLum
+            maxLum,
+            (unsigned)POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX
         );
          posY = Draw_DrawFormattedString(
             10,
@@ -288,7 +294,8 @@ void RosalinaMenu_ChangeScreenBrightness(void)
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "Press START to begin, B to exit.\n\n");
 
         posY = Draw_DrawString(10, posY, COLOR_RED, "WARNING: \n");
-        posY = Draw_DrawString(10, posY, COLOR_WHITE, "  * values rarely glitch >172, do not use these!\n");
+        posY = Draw_DrawFormattedString(10, posY, COLOR_WHITE, "  * values rarely glitch >%u, use at own risk.\n",
+            (unsigned)POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX);
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "  * all changes revert on shell reopening.\n");
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "  * bottom framebuffer will be visible until exit.\n");
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "  * bottom screen functions as normal with\nbacklight turned off.\n");
