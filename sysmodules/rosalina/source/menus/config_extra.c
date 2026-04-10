@@ -16,10 +16,19 @@
 
 #include "configExtra_ini.h"
 
-config_extra configExtra = { .suppressLeds = true, .cutSlotPower = false, .cutSleepWifi = false, .homeToRosalina = false, .toggleBottomLcd = false, .turnLedsOffStandby = false, .perGamePlugin = false };
+config_extra configExtra = {
+    .suppressLeds = true,
+    .cutSlotPower = false,
+    .cutSleepWifi = false,
+    .homeToRosalina = false,
+    .toggleBottomLcd = false,
+    .turnLedsOffStandby = false,
+    .perGamePlugin = false,
+    .defaultBacklightMode = 0,
+};
 bool configExtraSaved = false;
 
-static const char menuText[8][32] = {
+static const char menuText[9][48] = {
     "Automatically suppress LEDs",
     "Cut power to TWL Flashcards",
     "Cut 3DS WiFi in sleep mode",
@@ -27,10 +36,11 @@ static const char menuText[8][32] = {
     "St+Se toggle bottom LCD in menu",
     "Disable led during standby",
     "Enable plugin loader per-game",
+    "Default screen backlights",
     "Save config. Changes saved"
 };
 
-static char menuDisplay[8][64];
+static char menuDisplay[9][64];
 
 Menu configExtraMenu = {
     "Extra config menu",
@@ -41,8 +51,9 @@ Menu configExtraMenu = {
         { menuText[3], METHOD, .method = &ConfigExtra_SetHomeToRosalina },
         { menuText[4], METHOD, .method = &ConfigExtra_SetToggleBottomLcd, .visibility = &old2DScheck },
         { menuText[5], METHOD, .method = &ConfigExtra_SetTurnLedsOffStandby },
-        { menuText[6], METHOD, .method = &ConfigExtra_SetPerGamePlugin },     
-        { menuText[7], METHOD, .method = &ConfigExtra_WriteConfigExtra },
+        { menuText[6], METHOD, .method = &ConfigExtra_SetPerGamePlugin },
+        { menuText[7], METHOD, .method = &ConfigExtra_SetDefaultBacklights, .visibility = &old2DScheck },
+        { menuText[8], METHOD, .method = &ConfigExtra_WriteConfigExtra },
         {},
     }
 };
@@ -57,7 +68,7 @@ void ConfigExtra_SetSuppressLeds(void)
     configExtra.suppressLeds = !configExtra.suppressLeds;
     ConfigExtra_UpdateMenuItem(0, configExtra.suppressLeds);
     configExtraSaved = false;
-    ConfigExtra_UpdateMenuItem(7, configExtraSaved);
+    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
 }
 
 void ConfigExtra_SetCutSlotPower(void) 
@@ -65,7 +76,7 @@ void ConfigExtra_SetCutSlotPower(void)
     configExtra.cutSlotPower = !configExtra.cutSlotPower;
     ConfigExtra_UpdateMenuItem(1, configExtra.cutSlotPower);
     configExtraSaved = false;
-    ConfigExtra_UpdateMenuItem(7, configExtraSaved);
+    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
 }
 
 void ConfigExtra_SetCutSleepWifi(void) 
@@ -73,7 +84,7 @@ void ConfigExtra_SetCutSleepWifi(void)
     configExtra.cutSleepWifi = !configExtra.cutSleepWifi;
     ConfigExtra_UpdateMenuItem(2, configExtra.cutSleepWifi);
     configExtraSaved = false;
-    ConfigExtra_UpdateMenuItem(7, configExtraSaved);
+    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
 }
 
 void ConfigExtra_SetHomeToRosalina(void) 
@@ -81,7 +92,7 @@ void ConfigExtra_SetHomeToRosalina(void)
     configExtra.homeToRosalina = !configExtra.homeToRosalina;
     ConfigExtra_UpdateMenuItem(3, configExtra.homeToRosalina);
     configExtraSaved = false;
-    ConfigExtra_UpdateMenuItem(7, configExtraSaved);
+    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
 }
 
 void ConfigExtra_SetToggleBottomLcd(void) 
@@ -89,7 +100,7 @@ void ConfigExtra_SetToggleBottomLcd(void)
     configExtra.toggleBottomLcd = !configExtra.toggleBottomLcd;
     ConfigExtra_UpdateMenuItem(4, configExtra.toggleBottomLcd);
     configExtraSaved = false;
-    ConfigExtra_UpdateMenuItem(7, configExtraSaved);
+    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
 }
 
 void ConfigExtra_SetTurnLedsOffStandby(void)
@@ -97,7 +108,7 @@ void ConfigExtra_SetTurnLedsOffStandby(void)
     configExtra.turnLedsOffStandby = !configExtra.turnLedsOffStandby;
     ConfigExtra_UpdateMenuItem(5, configExtra.turnLedsOffStandby);
     configExtraSaved = false;
-    ConfigExtra_UpdateMenuItem(7, configExtraSaved);
+    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
 }
 
 void ConfigExtra_SetPerGamePlugin(void)
@@ -105,13 +116,31 @@ void ConfigExtra_SetPerGamePlugin(void)
     configExtra.perGamePlugin = !configExtra.perGamePlugin;
     ConfigExtra_UpdateMenuItem(6, configExtra.perGamePlugin);
     configExtraSaved = false;
-    ConfigExtra_UpdateMenuItem(7, configExtraSaved);
+    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
+}
+
+void ConfigExtra_SetDefaultBacklights(void)
+{
+    configExtra.defaultBacklightMode = (u8)((configExtra.defaultBacklightMode + 1) % 3);
+    ConfigExtra_UpdateDefaultBacklightMenuItem();
+    configExtraSaved = false;
+    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
+    Polari_ApplyDefaultScreenBacklights();
 }
 
 void ConfigExtra_UpdateMenuItem(int menuIndex, bool value)
 {
     sprintf(menuDisplay[menuIndex], "%s: %s", menuText[menuIndex], value ? "[true]" : "[false]");
     configExtraMenu.items[menuIndex].title = menuDisplay[menuIndex];
+}
+
+void ConfigExtra_UpdateDefaultBacklightMenuItem(void)
+{
+    static const char *modes[] = { "both on", "top only", "bottom only" };
+    u8 m = configExtra.defaultBacklightMode % 3u;
+
+    sprintf(menuDisplay[7], "%s: [%s]", menuText[7], modes[m]);
+    configExtraMenu.items[7].title = menuDisplay[7];
 }
 
 void ConfigExtra_UpdateAllMenuItems(void)
@@ -123,7 +152,8 @@ void ConfigExtra_UpdateAllMenuItems(void)
     ConfigExtra_UpdateMenuItem(4, configExtra.toggleBottomLcd);
     ConfigExtra_UpdateMenuItem(5, configExtra.turnLedsOffStandby);
     ConfigExtra_UpdateMenuItem(6, configExtra.perGamePlugin);
-    ConfigExtra_UpdateMenuItem(7, configExtraSaved);
+    ConfigExtra_UpdateDefaultBacklightMenuItem();
+    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
 }
 
 void ConfigExtra_ReadConfigExtra(void)
@@ -151,6 +181,8 @@ void ConfigExtra_ReadConfigExtra(void)
         IFile_Close(&file);
         if(R_SUCCEEDED(res)) 
         {
+            if (total < sizeof(configExtra))
+                configExtra.defaultBacklightMode = 0;
             configExtraSaved = true;
         }
     }
@@ -183,7 +215,7 @@ void ConfigExtra_WriteConfigExtra(void)
         if(R_SUCCEEDED(res)) 
         {
             configExtraSaved = true;
-            ConfigExtra_UpdateMenuItem(7, configExtraSaved);
+            ConfigExtra_UpdateMenuItem(8, configExtraSaved);
         }
     }
 }
