@@ -403,6 +403,9 @@ MyThread *menuCreateThread(void)
 u32 menuCombo;
 u32 g_blockMenuOpen = 0;
 
+static bool polariStartupLumSplitDone = false;
+static unsigned polariStartupLumSplitWait = 0;
+
 void menuThreadMain(void)
 {
     while (!isServiceUsable("ac:u") || !isServiceUsable("hid:USER") || !isServiceUsable("gsp::Gpu") || !isServiceUsable("gsp::Lcd") || !isServiceUsable("cdc:CHK"))
@@ -427,13 +430,17 @@ void menuThreadMain(void)
     bool instantReboot = ((config >> (u32)NOERRDISPINSTANTREBOOT) & 1) != 0;
 
     menuReadScreenTypes();
-    polari_apply_startup_luminance_split();
 
     while(!preTerminationRequested)
     {
         svcSleepThread(50 * 1000 * 1000LL);
         if (menuShouldExit)
             continue;
+
+        if (!polariStartupLumSplitDone && ++polariStartupLumSplitWait >= 80) {
+            polari_apply_startup_luminance_split();
+            polariStartupLumSplitDone = true;
+        }
 
         Cheat_ApplyCheats();
 
