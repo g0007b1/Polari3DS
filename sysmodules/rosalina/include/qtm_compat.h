@@ -1,8 +1,10 @@
 #pragma once
 #include <3ds/types.h>
+#include <stdbool.h>
 
 /*
- * qtmGetSessionHandle() exists in libctru but older devkitARM headers omitted the
- * prototype; Rosalina still needs it for QTM session steal (menu.c).
+ * qtmGetSessionHandle: in libctru but omitted from some old headers.
  */
 Handle *qtmGetSessionHandle(void);
+
+bool rosalina_qtm_is_initialized(void);
