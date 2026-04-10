@@ -234,6 +234,57 @@ void RosalinaMenu_ShowCredits(void)
     while (!(waitInput() & KEY_B) && !menuShouldExit);
 }
 
+/* Same 3-state cycle as the in-menu Y handler (both -> top only -> bottom only). */
+static void polari_brightness_menu_y_cycle(void)
+{
+    u8 result, botStatus, topStatus;
+
+    if (!hasTopScreen)
+        return;
+    mcuHwcInit();
+    MCUHWC_ReadRegister(0x0F, &result, 1);
+    mcuHwcExit();
+    botStatus = (result >> 5) & 1;
+    topStatus = (result >> 6) & 1;
+
+    gspLcdInit();
+    if (botStatus == 1 && topStatus == 1)
+        GSPLCD_PowerOffBacklight(BIT(GSP_SCREEN_BOTTOM));
+    else if (botStatus == 0 && topStatus == 1)
+    {
+        GSPLCD_PowerOnBacklight(BIT(GSP_SCREEN_BOTTOM));
+        GSPLCD_PowerOffBacklight(BIT(GSP_SCREEN_TOP));
+    }
+    else if (topStatus == 0)
+        GSPLCD_PowerOnBacklight(BIT(GSP_SCREEN_TOP));
+    gspLcdExit();
+}
+
+void Polari_ApplyDefaultScreenBacklights(void)
+{
+    u32 m;
+
+    if (!hasTopScreen)
+        return;
+    m = (u32)(configExtra.defaultBacklightMode % 3u);
+    if (m == 0)
+        return;
+    if (!isServiceUsable("gsp::Lcd"))
+        return;
+    gspLcdInit();
+    if (m == 1u)
+    {
+        GSPLCD_PowerOnBacklight(BIT(GSP_SCREEN_TOP));
+        GSPLCD_PowerOffBacklight(BIT(GSP_SCREEN_BOTTOM));
+    }
+    else
+    {
+        GSPLCD_PowerOnBacklight(BIT(GSP_SCREEN_BOTTOM));
+        GSPLCD_PowerOffBacklight(BIT(GSP_SCREEN_TOP));
+    }
+    gspLcdExit();
+}
+
 void RosalinaMenu_ChangeScreenBrightness(void)
 {
     Draw_Lock();
@@ -301,6 +352,9 @@ void RosalinaMenu_ChangeScreenBrightness(void)
         Draw_Unlock();
 
         u32 pressed = waitInputWithTimeout(1000);
+
+        if ((pressed & KEY_Y) && hasTopScreen)
+            polari_brightness_menu_y_cycle();
 
         if (pressed & KEY_START)
             break;
@@ -402,29 +456,8 @@ void RosalinaMenu_ChangeScreenBrightness(void)
             }
         }
         
-       if ((pressed & KEY_Y) && hasTopScreen)
-        {   
-            u8 result, botStatus, topStatus;
-            mcuHwcInit();
-            MCUHWC_ReadRegister(0x0F, &result, 1);  // https://www.3dbrew.org/wiki/I2C_Registers#Device_3
-            mcuHwcExit();  
-            botStatus = (result >> 5) & 1;  // right shift result to bit 5 ("Bottom screen backlight on") and perform bitwise AND with 1
-            topStatus = (result >> 6) & 1;  // bit06: Top screen backlight on
-
-            if (botStatus == 1 && topStatus == 1)
-            {
-                GSPLCD_PowerOffBacklight(BIT(GSP_SCREEN_BOTTOM));
-            }
-            else if (botStatus == 0 && topStatus == 1)
-            {
-                GSPLCD_PowerOnBacklight(BIT(GSP_SCREEN_BOTTOM));
-                GSPLCD_PowerOffBacklight(BIT(GSP_SCREEN_TOP));
-            }
-            else if (topStatus == 0)
-            {
-                GSPLCD_PowerOnBacklight(BIT(GSP_SCREEN_TOP));
-            }
-        }
+        if ((pressed & KEY_Y) && hasTopScreen)
+            polari_brightness_menu_y_cycle();
 
         if (pressed & KEY_B)
             break;
