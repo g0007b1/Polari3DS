@@ -27,6 +27,7 @@
 #include <3ds.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 #include "luminance.h"
 #include "utils.h"
 #include "draw.h"
@@ -34,14 +35,19 @@
 #include "luma_config.h"
 #include "luma_shared_config.h"
 
+/* Extended BlPwmData: stock layout + bottom-only luminance curve + magic (Polari). */
+#define POLARI_BL_PWM_EXT_MAGIC 0x504F4C53u /* 'POLS' */
+
 typedef struct BlPwmData
 {
     float coeffs[3][3];
     u8 numLevels;
     u8 unk;
-    u16  luminanceLevels[7];
+    u16  luminanceLevels[7]; /* top screen presets (stock + Polari top) */
     u16  brightnessMax;
     u16  brightnessMin;
+    u16  luminanceLevelsBot[7];
+    u32  polari_ext_magic;
 } BlPwmData;
 
 // Calibration, with (dubious) default values as fallback
@@ -56,6 +62,8 @@ static BlPwmData s_blPwmData = {
     .luminanceLevels = { 20, 43, 73, 95, 117, 172, 172 },
     .brightnessMax = 512,
     .brightnessMin = 13,
+    .luminanceLevelsBot = { 20, 43, 73, 95, 117, 172, 172 },
+    .polari_ext_magic = 0,
 };
 
 static inline float getPwmRatio(u32 brightnessMax, u32 pwmCnt)
@@ -88,6 +96,14 @@ static inline u32 brightnessToLuminance(u32 brightness, const float coeffs[3], f
     return (u32)(x0 + 0.5f);
 }
 
+static void polari_bot_lum_fallback_if_needed(void)
+{
+    if (s_blPwmData.polari_ext_magic != POLARI_BL_PWM_EXT_MAGIC) {
+        memcpy(s_blPwmData.luminanceLevelsBot, s_blPwmData.luminanceLevels, sizeof(s_blPwmData.luminanceLevelsBot));
+        s_blPwmData.polari_ext_magic = 0;
+    }
+}
+
 static void readCalibration(void)
 {
     static bool calibRead = false;
@@ -96,16 +112,17 @@ static void readCalibration(void)
         cfguInit();
         calibRead = R_SUCCEEDED(CFG_GetConfigInfoBlk8(sizeof(BlPwmData), 0x50002, &s_blPwmData));
         cfguExit();
+        polari_bot_lum_fallback_if_needed();
     }
 }
 
-u32 getMinLuminancePreset(void)
+u32 getMinLuminancePreset(bool top)
 {
     readCalibration();
-    return s_blPwmData.luminanceLevels[0];
+    return top ? s_blPwmData.luminanceLevels[0] : s_blPwmData.luminanceLevelsBot[0];
 }
 
-u32 getMaxLuminancePreset(void)
+u32 getMaxLuminancePreset(bool top)
 {
     // Unlike SetLuminanceLevel, SetLuminance doesn't
     // check if preset <= 5, and actually allows the lumiance
@@ -113,7 +130,7 @@ u32 getMaxLuminancePreset(void)
     // when adapter is plugged in), even when the feature is disabled
     // (it is disabled for anything but the OG model, iirc)
     readCalibration();
-    return s_blPwmData.luminanceLevels[6];
+    return top ? s_blPwmData.luminanceLevels[6] : s_blPwmData.luminanceLevelsBot[6];
 }
 
 u32 getCurrentLuminance(bool top)
@@ -130,13 +147,13 @@ u32 getCurrentLuminance(bool top)
     return brightnessToLuminance(brightness, coeffs, ratio);
 }
 
-/* Keep luminanceLevels[0]..[6] non-decreasing (OS expects monotonic presets; [5][6] must follow [4] for max). */
-static void polari_pwm_sync_chain(BlPwmData *d)
+/* Keep each preset row [0]..[6] non-decreasing (OS expects monotonic presets). */
+static void polari_pwm_sync_row(u16 levels[7])
 {
     unsigned i;
     for (i = 1; i < 7; i++) {
-        if (d->luminanceLevels[i] < d->luminanceLevels[i - 1])
-            d->luminanceLevels[i] = d->luminanceLevels[i - 1];
+        if (levels[i] < levels[i - 1])
+            levels[i] = levels[i - 1];
     }
 }
 
@@ -165,19 +182,28 @@ void Luminance_RecalibrateBrightnessDefaults(void)
 
     u32 kHeld = 0;
     int sel = 0, maxBri = (int)POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX;
+    int editTop = 1; /* 1 = top screen table, 0 = bottom */
     char fmtbuf[0x40];
+    u16 *activeRow;
 
     cfguInit();
-        CFG_GetConfigInfoBlk8(sizeof(BlPwmData), 0x50002, &s_blPwmData);
+    CFG_GetConfigInfoBlk8(sizeof(BlPwmData), 0x50002, &s_blPwmData);
     cfguExit();
-    
+    polari_bot_lum_fallback_if_needed();
+
     s_blPwmData.brightnessMin = 1;
-    polari_pwm_sync_chain(&s_blPwmData);
+    polari_pwm_sync_row(s_blPwmData.luminanceLevels);
+    polari_pwm_sync_row(s_blPwmData.luminanceLevelsBot);
 
     do
     {
         kHeld = HID_PAD;
         u32 pressed = waitInputWithTimeout(1000);
+
+        if (pressed & KEY_X)
+            editTop = !editTop;
+
+        activeRow = editTop ? s_blPwmData.luminanceLevels : s_blPwmData.luminanceLevelsBot;
 
         if (pressed & DIRECTIONAL_KEYS)
         {
@@ -192,20 +218,20 @@ void Luminance_RecalibrateBrightnessDefaults(void)
             else if (pressed & KEY_RIGHT)
             {
                 int step = (kHeld & (KEY_L | KEY_R)) ? 10 : 1;
-                s32 v = (s32)s_blPwmData.luminanceLevels[sel] + step;
+                s32 v = (s32)activeRow[sel] + step;
                 if (v < 0) v = 0;
                 if (v > maxBri) v = maxBri;
-                s_blPwmData.luminanceLevels[sel] = (u16)v;
-                polari_pwm_sync_chain(&s_blPwmData);
+                activeRow[sel] = (u16)v;
+                polari_pwm_sync_row(activeRow);
             }
             else if (pressed & KEY_LEFT)
             {
                 int step = (kHeld & (KEY_L | KEY_R)) ? 10 : 1;
-                s32 v = (s32)s_blPwmData.luminanceLevels[sel] - step;
+                s32 v = (s32)activeRow[sel] - step;
                 if (v < 0) v = 0;
                 if (v > maxBri) v = maxBri;
-                s_blPwmData.luminanceLevels[sel] = (u16)v;
-                polari_pwm_sync_chain(&s_blPwmData);
+                activeRow[sel] = (u16)v;
+                polari_pwm_sync_row(activeRow);
             }
         }
         
@@ -214,6 +240,7 @@ void Luminance_RecalibrateBrightnessDefaults(void)
 
         if(pressed & KEY_START)
         {
+            s_blPwmData.polari_ext_magic = POLARI_BL_PWM_EXT_MAGIC;
             cfguInit();
             if(R_SUCCEEDED(CFG_SetConfigInfoBlk8(sizeof(BlPwmData), 0x50002, &s_blPwmData))) 
             {
@@ -223,10 +250,17 @@ void Luminance_RecalibrateBrightnessDefaults(void)
             break;
         }
 
+        activeRow = editTop ? s_blPwmData.luminanceLevels : s_blPwmData.luminanceLevelsBot;
+
         Draw_Lock();
         Draw_ClearFramebuffer();
         Draw_DrawString(10, 10, COLOR_TITLE, "Permanent brightness recalibration - by Nutez");
         u32 posY = 30;
+
+        posY = Draw_DrawFormattedString(
+            10, posY, COLOR_GREEN,
+            "Editing: %s  (X: switch top/bottom)\n",
+            editTop ? "TOP screen" : "BOTTOM screen") + SPACING_Y;
         
         posY = Draw_DrawString(10, posY, COLOR_RED, "WARNING: ") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "  * brightness preview not possible here\n    due to glitch risk.") + SPACING_Y;
@@ -237,30 +271,38 @@ void Luminance_RecalibrateBrightnessDefaults(void)
             "  * %u is only presumed(!) safe for prolonged raw use.",
             (unsigned)POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX) + (SPACING_Y * 2);
 
-        sprintf(fmtbuf, "%c Level 1 value: %u", (sel == 0 ? '>' : ' '), (unsigned)s_blPwmData.luminanceLevels[0]);
+        sprintf(fmtbuf, "%c Level 1 value: %u", (sel == 0 ? '>' : ' '), (unsigned)activeRow[0]);
         posY = Draw_DrawString(10, posY, COLOR_WHITE, fmtbuf) + SPACING_Y;
 
-        sprintf(fmtbuf, "%c Level 2 value: %u", (sel == 1 ? '>' : ' '), (unsigned)s_blPwmData.luminanceLevels[1]);
+        sprintf(fmtbuf, "%c Level 2 value: %u", (sel == 1 ? '>' : ' '), (unsigned)activeRow[1]);
         posY = Draw_DrawString(10, posY, COLOR_WHITE, fmtbuf) + SPACING_Y;
 
-        sprintf(fmtbuf, "%c Level 3 value: %u", (sel == 2 ? '>' : ' '), (unsigned)s_blPwmData.luminanceLevels[2]);
+        sprintf(fmtbuf, "%c Level 3 value: %u", (sel == 2 ? '>' : ' '), (unsigned)activeRow[2]);
         posY = Draw_DrawString(10, posY, COLOR_WHITE, fmtbuf) + SPACING_Y;
 
-        sprintf(fmtbuf, "%c Level 4 value: %u", (sel == 3 ? '>' : ' '), (unsigned)s_blPwmData.luminanceLevels[3]);
+        sprintf(fmtbuf, "%c Level 4 value: %u", (sel == 3 ? '>' : ' '), (unsigned)activeRow[3]);
         posY = Draw_DrawString(10, posY, COLOR_WHITE, fmtbuf) + SPACING_Y;
 
-        sprintf(fmtbuf, "%c Level 5 value: %u", (sel == 4 ? '>' : ' '), (unsigned)s_blPwmData.luminanceLevels[4]);
+        sprintf(fmtbuf, "%c Level 5 value: %u", (sel == 4 ? '>' : ' '), (unsigned)activeRow[4]);
         posY = Draw_DrawString(10, posY, COLOR_WHITE, fmtbuf) + SPACING_Y;
 
         posY = Draw_DrawFormattedString(10, posY, COLOR_WHITE,
             "  (auto) Boost slot: %u  Max cap: %u\n",
-            (unsigned)s_blPwmData.luminanceLevels[5], (unsigned)s_blPwmData.luminanceLevels[6]) + (SPACING_Y * 2);
+            (unsigned)activeRow[5], (unsigned)activeRow[6]) + (SPACING_Y * 2);
+
+        posY = Draw_DrawFormattedString(
+            10, posY, COLOR_WHITE,
+            "Other screen — L1:%u L5:%u Max:%u\n",
+            (unsigned)(editTop ? s_blPwmData.luminanceLevelsBot[0] : s_blPwmData.luminanceLevels[0]),
+            (unsigned)(editTop ? s_blPwmData.luminanceLevelsBot[4] : s_blPwmData.luminanceLevels[4]),
+            (unsigned)(editTop ? s_blPwmData.luminanceLevelsBot[6] : s_blPwmData.luminanceLevels[6])) + SPACING_Y;
 
         posY = Draw_DrawString(10, posY, COLOR_GREEN, "Controls:") + SPACING_Y;
+        posY = Draw_DrawString(10, posY, COLOR_WHITE, " X: switch TOP / BOTTOM preset table.") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, " UP/DOWN to choose level to edit.") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, " RIGHT/LEFT for +/-1, +hold L1 or R1 for +/-10.") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, " Higher presets auto-raise Boost/Max rows.") + SPACING_Y;
-        posY = Draw_DrawString(10, posY, COLOR_WHITE, " Press START to save all value changes.") + SPACING_Y;
+        posY = Draw_DrawString(10, posY, COLOR_WHITE, " Press START to save (top + bottom tables).") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, " Reboot may be required to see applied changes.") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, " Press B to exit.");
 
