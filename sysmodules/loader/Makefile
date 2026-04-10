@@ -58,7 +58,6 @@ COMMON_FLAGS =\
 		-Werror \
 		-mword-relocations \
 		-ftrivial-auto-var-init=zero \
-		-fzero-init-padding-bits=all \
 		-ffunction-sections \
 		-fdata-sections \
 		$(OPTFLAGS) \
