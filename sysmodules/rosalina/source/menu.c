@@ -437,7 +437,7 @@ void menuThreadMain(void)
         if (menuShouldExit)
             continue;
 
-        if (!polariStartupLumSplitDone && ++polariStartupLumSplitWait >= 80) {
+        if (!polariStartupLumSplitDone && ++polariStartupLumSplitWait >= 120) {
             polari_apply_startup_luminance_split();
             polariStartupLumSplitDone = true;
         }
