@@ -254,10 +254,15 @@ static bool polari_lum_preset_tables_equal(void)
 /*
  * The OS uses one luminance target for both panels. After loading separate top/bottom
  * calibration, map the current global luminance onto the bottom preset range and poke HW.
+ *
+ * Cold-boot: getCurrentLuminance() can return garbage/low (~32) for hundreds of ms; applying
+ * setBrightnessAlt with that L dims both panels. Wait and take the max of several paired
+ * (top==bottom) samples before mapping.
  */
 void polari_apply_startup_luminance_split(void)
 {
-    u32 minT, maxT, minB, maxB, L, lumBot, curBot;
+    u32 minT, maxT, minB, maxB, L, lumBot;
+    u32 t, b, best, i, r;
 
     if (!hasTopScreen)
         return;
@@ -276,9 +281,26 @@ void polari_apply_startup_luminance_split(void)
     if (maxT <= minT || maxB <= minB)
         return;
 
-    L = getCurrentLuminance(true);
-    curBot = getCurrentLuminance(false);
-    if (L != curBot)
+    svcSleepThread(2500 * 1000LL);
+
+    for (r = 0; r < 2; r++) {
+        best = 0;
+        for (i = 0; i < 6; i++) {
+            t = getCurrentLuminance(true);
+            b = getCurrentLuminance(false);
+            if (t == b && t > best)
+                best = t;
+            svcSleepThread(350 * 1000LL);
+        }
+        L = best;
+        /* If calibration allows a bright HUD but we only ever saw a cold-read low L, wait once more. */
+        if (r == 0 && maxT > minT + 80 && L < minT + 40)
+            svcSleepThread(3000 * 1000LL);
+        else
+            break;
+    }
+
+    if (L < minT)
         return;
 
     if (L <= minT)
