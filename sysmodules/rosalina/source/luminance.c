@@ -126,7 +126,8 @@ static FS_ArchiveID polari_luma_archive(void)
     return (bool)out ? ARCHIVE_SDMC : ARCHIVE_NAND_RW;
 }
 
-static void polari_load_bot_lum_from_sd(void)
+/* Returns true if bottom row + magic were loaded from SD. */
+static bool polari_try_load_bot_lum_from_sd(void)
 {
     IFile file;
     PolariBotLumFile blk;
@@ -137,15 +138,16 @@ static void polari_load_bot_lum_from_sd(void)
     res = IFile_Open(&file, polari_luma_archive(), fsMakePath(PATH_EMPTY, ""),
         fsMakePath(PATH_ASCII, POLARI_BOT_LUM_PATH), FS_OPEN_READ);
     if (R_FAILED(res))
-        return;
+        return false;
     res = IFile_Read(&file, &total, &blk, sizeof(blk));
     IFile_Close(&file);
     if (R_FAILED(res) || total != sizeof(blk))
-        return;
+        return false;
     if (blk.magic != POLARI_BOT_LUM_FILE_MAGIC)
-        return;
+        return false;
     memcpy(s_blPwmData.luminanceLevelsBot, blk.bot, sizeof(blk.bot));
     s_blPwmData.polari_ext_magic = POLARI_BL_PWM_EXT_MAGIC;
+    return true;
 }
 
 static void polari_save_bot_lum_to_sd(void)
@@ -169,22 +171,43 @@ static void polari_pwm_sync_row(u16 levels[7]);
 
 static void luminance_load_pwm_data(void)
 {
+    unsigned attempt;
+
     cfguInit();
     (void)CFG_GetConfigInfoBlk8(BL_PWM_CFG_SAVE_SIZE, 0x50002, &s_blPwmData);
     cfguExit();
-    polari_load_bot_lum_from_sd();
+
+    /*
+     * Bottom presets live only on SD (/luma/polari_bot_lum.bin). On the first
+     * readCalibration() the filesystem may not be ready yet — open fails, we
+     * fall back to copying the top row onto the bottom, tables match, and the
+     * one-shot cache never reloads: the real file is ignored until reboot.
+     * Retry a few times with delay before running that fallback.
+     */
+    for (attempt = 0; attempt < 12; attempt++) {
+        if (polari_try_load_bot_lum_from_sd())
+            break;
+        if (attempt + 1 < 12)
+            svcSleepThread(250 * 1000LL);
+    }
+
     polari_bot_lum_fallback_if_needed();
     polari_pwm_sync_row(s_blPwmData.luminanceLevels);
     polari_pwm_sync_row(s_blPwmData.luminanceLevelsBot);
 }
 
+static bool s_pwmCalibCacheValid = false;
+
+static void luminance_invalidate_pwm_cache(void)
+{
+    s_pwmCalibCacheValid = false;
+}
+
 static void readCalibration(void)
 {
-    static bool calibRead = false;
-
-    if (!calibRead) {
+    if (!s_pwmCalibCacheValid) {
         luminance_load_pwm_data();
-        calibRead = true;
+        s_pwmCalibCacheValid = true;
     }
 }
 
@@ -280,6 +303,7 @@ void polari_apply_startup_luminance_split(void)
     if (!isServiceUsable("gsp::Lcd"))
         return;
 
+    luminance_invalidate_pwm_cache();
     readCalibration();
     if (polari_lum_preset_tables_equal())
         return;
@@ -351,6 +375,7 @@ void Luminance_RecalibrateBrightnessDefaults(void)
     u16 *activeRow;
 
     luminance_load_pwm_data();
+    s_pwmCalibCacheValid = true;
 
     do
     {
