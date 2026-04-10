@@ -32,7 +32,7 @@
 
 /* Raw luminance cap (Rosalina "Change screen brightness" + recalibration). Match stock Polari extended max if unset. */
 #ifndef POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX
-#define POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX 350
+#define POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX 500
 #endif
 
 u32 getMinLuminancePreset(bool top);
