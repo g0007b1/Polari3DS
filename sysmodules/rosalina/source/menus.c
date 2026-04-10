@@ -39,6 +39,7 @@
 #include "luma_config.h"
 #include "luma_shared_config.h"
 #include "menus/config_extra.h"
+#include "polari_backlight.h"
 #include "menus/screen_filters.h"
 #include "luminance.h"
 #include "plugin.h"
@@ -269,33 +270,6 @@ static void polari_brightness_menu_y_cycle_intro(void)
     svcKernelSetState(0x10000, 2);
     gspLcdInit();
     polari_brightness_menu_y_apply_state();
-    gspLcdExit();
-    svcKernelSetState(0x10000, 2);
-}
-
-void Polari_ApplyDefaultScreenBacklights(void)
-{
-    u32 m;
-
-    if (!hasTopScreen)
-        return;
-    m = (u32)(configExtra.defaultBacklightMode % 3u);
-    if (m == 0)
-        return;
-    if (!isServiceUsable("gsp::Lcd"))
-        return;
-    svcKernelSetState(0x10000, 2);
-    gspLcdInit();
-    if (m == 1u)
-    {
-        GSPLCD_PowerOnBacklight(BIT(GSP_SCREEN_TOP));
-        GSPLCD_PowerOffBacklight(BIT(GSP_SCREEN_BOTTOM));
-    }
-    else
-    {
-        GSPLCD_PowerOnBacklight(BIT(GSP_SCREEN_BOTTOM));
-        GSPLCD_PowerOffBacklight(BIT(GSP_SCREEN_TOP));
-    }
     gspLcdExit();
     svcKernelSetState(0x10000, 2);
 }
