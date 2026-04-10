@@ -284,7 +284,7 @@ static bool polari_lum_preset_tables_equal(void)
 void polari_apply_startup_luminance_split(void)
 {
     u32 minT, maxT, minB, maxB, L, lumBot;
-    u32 t, b, best, i, r;
+    u32 t, best, i, r;
 
     if (!hasTopScreen)
         return;
@@ -309,8 +309,10 @@ void polari_apply_startup_luminance_split(void)
         best = 0;
         for (i = 0; i < 5; i++) {
             t = getCurrentLuminance(true);
-            b = getCurrentLuminance(false);
-            if (t == b && t > best)
+            /* Max top luminance — OS brightness follows the top curve; requiring t==b
+             * breaks once top/bottom PWM differ (different polynomials), leaving best=0
+             * or a stale low pair and mapping the bottom to ~min..mid instead of max. */
+            if (t > best)
                 best = t;
             svcSleepThread(150 * 1000LL);
         }
@@ -334,9 +336,12 @@ void polari_apply_startup_luminance_split(void)
         lumBot = minB + (u32)(num / den);
     }
 
-    if (lumBot > L)
-        lumBot = L;
-
+    /*
+     * Do NOT clamp lumBot to L here. Early-boot getCurrentLuminance() for the top
+     * panel can be far below the real OS level; forcing lumBot <= L then pins the
+     * bottom to that bogus low value (e.g. ~51) while CFG/SD still show the saved
+     * max. Duty mismatch vs top is already limited in polari_set_split_brightness_mmio.
+     */
     polari_set_split_brightness_mmio(L, lumBot);
 }
 
