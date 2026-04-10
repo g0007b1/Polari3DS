@@ -25,8 +25,6 @@ typedef struct {
 	bool toggleBottomLcd;
 	bool turnLedsOffStandby;
 	bool perGamePlugin;
-	/* 0–5: see Polari_BacklightLevelLabel / polari_backlight.c */
-	u8 backlightLevel;
 } config_extra;
 
 extern config_extra configExtra;
@@ -41,9 +39,7 @@ void ConfigExtra_SetHomeToRosalina(void);
 void ConfigExtra_SetToggleBottomLcd(void);
 void ConfigExtra_SetTurnLedsOffStandby(void);
 void ConfigExtra_SetPerGamePlugin(void);
-void ConfigExtra_SetDefaultBacklights(void);
 void ConfigExtra_UpdateMenuItem(int menuIndex, bool value);
-void ConfigExtra_UpdateDefaultBacklightMenuItem(void);
 void ConfigExtra_UpdateAllMenuItems(void);
 void ConfigExtra_ReadConfigExtra(void);
 void ConfigExtra_WriteConfigExtra(void);
