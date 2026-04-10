@@ -26,6 +26,7 @@
 
 #include <3ds.h>
 #include <3ds/services/hid.h>
+#include <3ds/services/qtm.h>
 #include "memory.h"
 #include "menu.h"
 #include "menus.h"
@@ -262,7 +263,7 @@ static void handlePreTermNotification(u32 notificationId)
     if (isHidInitialized)
         hidExit();
     if (isQtmInitialized)
-        svcCloseHandle(*qtmGetSessionHandle()); // qtmExit();
+        qtmExit();
 
     // Termination request
     menuShouldExit = true;
