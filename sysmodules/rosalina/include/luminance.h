@@ -29,6 +29,11 @@
 #include <3ds/types.h>
 #include "utils.h"
 
+/* Raw luminance cap (Rosalina "Change screen brightness" + recalibration). Match stock Polari extended max if unset. */
+#ifndef POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX
+#define POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX 289
+#endif
+
 u32 getMinLuminancePreset(void);
 u32 getMaxLuminancePreset(void);
 u32 getCurrentLuminance(bool top);
