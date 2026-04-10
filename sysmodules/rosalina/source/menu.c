@@ -26,6 +26,7 @@
 
 #include <3ds.h>
 #include <3ds/services/hid.h>
+#include "qtm_compat.h"
 #include "menu.h"
 #include "draw.h"
 #include "menus/n3ds.h"
@@ -359,7 +360,7 @@ static void menuInitializeQtm(void)
 
     // Steal QTM handle from GSP, because there is a limit of 3 sessions (or 2 before 9.3) for ALL qtm services
     Handle qtmHandle = 0;
-    for (int i = 0; i < 30 && !qtmIsInitialized(); i++)
+    for (int i = 0; i < 30 && !rosalina_qtm_is_initialized(); i++)
     {
         if (R_SUCCEEDED(svcControlService(SERVICEOP_STEAL_CLIENT_SESSION, &qtmHandle, "qtm:sp")))
             *qtmGetSessionHandle() = qtmHandle;
@@ -367,7 +368,7 @@ static void menuInitializeQtm(void)
             svcSleepThread(100 * 100 * 1000LL);
     }
 
-    isQtmInitialized = qtmIsInitialized();
+    isQtmInitialized = rosalina_qtm_is_initialized();
 }
 
 static inline u32 menuAdvanceCursor(u32 pos, u32 numItems, s32 displ)
