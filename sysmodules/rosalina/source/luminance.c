@@ -245,29 +245,6 @@ void setBrightnessAlt(u32 lumTop, u32 lumBot)
     REG32(regbaseBot + offset) = (REG32(regbaseBot + offset) & ~0x3FFu) | valBot;
 }
 
-/*
- * Startup split: bottom polynomial can map the same "luminance" to higher PWM than top — cap
- * bottom duty so the panel is never brighter than the top (user expects dimmer bottom).
- */
-static void polari_set_split_brightness_mmio(u32 lumTop, u32 lumBot)
-{
-    u32 regbaseTop = 0x10202200;
-    u32 regbaseBot = 0x10202A00;
-    u32 offset = 0x40;
-    const float *coeffsTop = s_blPwmData.coeffs[1];
-    const float *coeffsBot = s_blPwmData.coeffs[0];
-    float ratioTop = getPwmRatio(s_blPwmData.brightnessMax, REG32(regbaseTop + 0x44));
-    float ratioBot = getPwmRatio(s_blPwmData.brightnessMax, REG32(regbaseBot + 0x44));
-    u32 valTop = luminanceToBrightness(lumTop, coeffsTop, 0, ratioTop) & 0x3FFu;
-    u32 valBot = luminanceToBrightness(lumBot, coeffsBot, 0, ratioBot) & 0x3FFu;
-
-    if (valBot > valTop)
-        valBot = valTop;
-
-    REG32(regbaseTop + offset) = (REG32(regbaseTop + offset) & ~0x3FFu) | valTop;
-    REG32(regbaseBot + offset) = (REG32(regbaseBot + offset) & ~0x3FFu) | valBot;
-}
-
 static bool polari_lum_preset_tables_equal(void)
 {
     return memcmp(s_blPwmData.luminanceLevels, s_blPwmData.luminanceLevelsBot,
@@ -279,7 +256,8 @@ static bool polari_lum_preset_tables_equal(void)
  * calibration, map the current global luminance onto the bottom preset range and poke HW.
  *
  * Called a few seconds after boot (menu thread) so PWM/luminance reads are stable.
- * MMIO only — no gspLcdInit. Bottom duty capped to not exceed top (polynomial mismatch fix).
+ * MMIO only — no gspLcdInit. Uses setBrightnessAlt (no duty clamp): capping valBot to valTop
+ * forced the same PWM on both panels; inverse luminance then differs per curve (~52 on bottom).
  */
 void polari_apply_startup_luminance_split(void)
 {
@@ -336,13 +314,7 @@ void polari_apply_startup_luminance_split(void)
         lumBot = minB + (u32)(num / den);
     }
 
-    /*
-     * Do NOT clamp lumBot to L here. Early-boot getCurrentLuminance() for the top
-     * panel can be far below the real OS level; forcing lumBot <= L then pins the
-     * bottom to that bogus low value (e.g. ~51) while CFG/SD still show the saved
-     * max. Duty mismatch vs top is already limited in polari_set_split_brightness_mmio.
-     */
-    polari_set_split_brightness_mmio(L, lumBot);
+    setBrightnessAlt(L, lumBot);
 }
 
 void Luminance_RecalibrateBrightnessDefaults(void)
