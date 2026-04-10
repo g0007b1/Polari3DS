@@ -266,11 +266,9 @@ static u32 polari_luminance_from_top_pwm_linear(void)
 }
 
 /*
- * The OS uses one luminance target for both panels. After loading separate top/bottom
- * calibration, map the global top luminance onto the bottom preset range.
- *
- * Must use GSPLCD_SetBrightnessRaw (same as "Change screen brightness"): MMIO-only pokes are
- * overwritten by the LCD/GSP pipeline, which then keeps luminance stuck near ~50 in software.
+ * Map OS top luminance onto the bottom preset row and apply via MMIO.
+ * Do NOT call gspLcdInit/GSPLCD_SetBrightnessRaw here — that has bricked early boot.
+ * "Change screen brightness" still uses GSP and is the authoritative sync when opened.
  */
 void polari_apply_startup_luminance_split(void)
 {
@@ -334,17 +332,9 @@ void polari_apply_startup_luminance_split(void)
         lumBot = minB + (u32)(num / den);
     }
 
-    svcKernelSetState(0x10000, 2);
-    if (R_SUCCEEDED(gspLcdInit())) {
-        if (L >= minT && lumBot >= minB) {
-            GSPLCD_SetBrightnessRaw(BIT(GSP_SCREEN_TOP), L);
-            GSPLCD_SetBrightnessRaw(BIT(GSP_SCREEN_BOTTOM), lumBot);
-        } else
-            setBrightnessAlt(L, lumBot);
-        gspLcdExit();
-    } else
-        setBrightnessAlt(L, lumBot);
-    svcKernelSetState(0x10000, 2);
+    setBrightnessAlt(L, lumBot);
+    svcSleepThread(800 * 1000LL);
+    setBrightnessAlt(L, lumBot);
 }
 
 void Luminance_RecalibrateBrightnessDefaults(void)
