@@ -13,7 +13,6 @@
 #include "menus/n3ds.h"
 #include "menus/screen_filters.h"
 #include "config_template_ini.h"
-#include "polari_backlight.h"
 
 #include "configExtra_ini.h"
 
@@ -25,11 +24,10 @@ config_extra configExtra = {
     .toggleBottomLcd = false,
     .turnLedsOffStandby = false,
     .perGamePlugin = false,
-    .backlightLevel = 0,
 };
 bool configExtraSaved = false;
 
-static const char menuText[9][48] = {
+static const char menuText[8][48] = {
     "Automatically suppress LEDs",
     "Cut power to TWL Flashcards",
     "Cut 3DS WiFi in sleep mode",
@@ -37,11 +35,10 @@ static const char menuText[9][48] = {
     "St+Se toggle bottom LCD in menu",
     "Disable led during standby",
     "Enable plugin loader per-game",
-    "Backlight level (0-5)",
     "Save config. Changes saved"
 };
 
-static char menuDisplay[9][64];
+static char menuDisplay[8][64];
 
 Menu configExtraMenu = {
     "Extra config menu",
@@ -53,8 +50,7 @@ Menu configExtraMenu = {
         { menuText[4], METHOD, .method = &ConfigExtra_SetToggleBottomLcd, .visibility = &old2DScheck },
         { menuText[5], METHOD, .method = &ConfigExtra_SetTurnLedsOffStandby },
         { menuText[6], METHOD, .method = &ConfigExtra_SetPerGamePlugin },
-        { menuText[7], METHOD, .method = &ConfigExtra_SetDefaultBacklights, .visibility = &old2DScheck },
-        { menuText[8], METHOD, .method = &ConfigExtra_WriteConfigExtra },
+        { menuText[7], METHOD, .method = &ConfigExtra_WriteConfigExtra },
         {},
     }
 };
@@ -69,7 +65,7 @@ void ConfigExtra_SetSuppressLeds(void)
     configExtra.suppressLeds = !configExtra.suppressLeds;
     ConfigExtra_UpdateMenuItem(0, configExtra.suppressLeds);
     configExtraSaved = false;
-    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
+    ConfigExtra_UpdateMenuItem(7, configExtraSaved);
 }
 
 void ConfigExtra_SetCutSlotPower(void) 
@@ -77,7 +73,7 @@ void ConfigExtra_SetCutSlotPower(void)
     configExtra.cutSlotPower = !configExtra.cutSlotPower;
     ConfigExtra_UpdateMenuItem(1, configExtra.cutSlotPower);
     configExtraSaved = false;
-    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
+    ConfigExtra_UpdateMenuItem(7, configExtraSaved);
 }
 
 void ConfigExtra_SetCutSleepWifi(void) 
@@ -85,7 +81,7 @@ void ConfigExtra_SetCutSleepWifi(void)
     configExtra.cutSleepWifi = !configExtra.cutSleepWifi;
     ConfigExtra_UpdateMenuItem(2, configExtra.cutSleepWifi);
     configExtraSaved = false;
-    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
+    ConfigExtra_UpdateMenuItem(7, configExtraSaved);
 }
 
 void ConfigExtra_SetHomeToRosalina(void) 
@@ -93,7 +89,7 @@ void ConfigExtra_SetHomeToRosalina(void)
     configExtra.homeToRosalina = !configExtra.homeToRosalina;
     ConfigExtra_UpdateMenuItem(3, configExtra.homeToRosalina);
     configExtraSaved = false;
-    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
+    ConfigExtra_UpdateMenuItem(7, configExtraSaved);
 }
 
 void ConfigExtra_SetToggleBottomLcd(void) 
@@ -101,7 +97,7 @@ void ConfigExtra_SetToggleBottomLcd(void)
     configExtra.toggleBottomLcd = !configExtra.toggleBottomLcd;
     ConfigExtra_UpdateMenuItem(4, configExtra.toggleBottomLcd);
     configExtraSaved = false;
-    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
+    ConfigExtra_UpdateMenuItem(7, configExtraSaved);
 }
 
 void ConfigExtra_SetTurnLedsOffStandby(void)
@@ -109,7 +105,7 @@ void ConfigExtra_SetTurnLedsOffStandby(void)
     configExtra.turnLedsOffStandby = !configExtra.turnLedsOffStandby;
     ConfigExtra_UpdateMenuItem(5, configExtra.turnLedsOffStandby);
     configExtraSaved = false;
-    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
+    ConfigExtra_UpdateMenuItem(7, configExtraSaved);
 }
 
 void ConfigExtra_SetPerGamePlugin(void)
@@ -117,30 +113,13 @@ void ConfigExtra_SetPerGamePlugin(void)
     configExtra.perGamePlugin = !configExtra.perGamePlugin;
     ConfigExtra_UpdateMenuItem(6, configExtra.perGamePlugin);
     configExtraSaved = false;
-    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
-}
-
-void ConfigExtra_SetDefaultBacklights(void)
-{
-    configExtra.backlightLevel = (u8)((configExtra.backlightLevel + 1) % (POLARI_BACKLIGHT_LEVEL_MAX + 1));
-    Polari_ApplyBacklightLevel(configExtra.backlightLevel);
-    (void)Polari_SaveBacklightToCfg(configExtra.backlightLevel);
-    ConfigExtra_UpdateDefaultBacklightMenuItem();
-    configExtraSaved = false;
-    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
+    ConfigExtra_UpdateMenuItem(7, configExtraSaved);
 }
 
 void ConfigExtra_UpdateMenuItem(int menuIndex, bool value)
 {
     sprintf(menuDisplay[menuIndex], "%s: %s", menuText[menuIndex], value ? "[true]" : "[false]");
     configExtraMenu.items[menuIndex].title = menuDisplay[menuIndex];
-}
-
-void ConfigExtra_UpdateDefaultBacklightMenuItem(void)
-{
-    sprintf(menuDisplay[7], "%s: %u %s", menuText[7], (unsigned)configExtra.backlightLevel,
-        Polari_BacklightLevelLabel(configExtra.backlightLevel));
-    configExtraMenu.items[7].title = menuDisplay[7];
 }
 
 void ConfigExtra_UpdateAllMenuItems(void)
@@ -152,8 +131,7 @@ void ConfigExtra_UpdateAllMenuItems(void)
     ConfigExtra_UpdateMenuItem(4, configExtra.toggleBottomLcd);
     ConfigExtra_UpdateMenuItem(5, configExtra.turnLedsOffStandby);
     ConfigExtra_UpdateMenuItem(6, configExtra.perGamePlugin);
-    ConfigExtra_UpdateDefaultBacklightMenuItem();
-    ConfigExtra_UpdateMenuItem(8, configExtraSaved);
+    ConfigExtra_UpdateMenuItem(7, configExtraSaved);
 }
 
 void ConfigExtra_ReadConfigExtra(void)
@@ -179,14 +157,9 @@ void ConfigExtra_ReadConfigExtra(void)
         u64 total;
         res = IFile_Read(&file, &total, &configExtra, sizeof(configExtra));
         IFile_Close(&file);
-        if(R_SUCCEEDED(res)) 
-        {
-            if (total < sizeof(configExtra))
-                configExtra.backlightLevel = 0;
+        if(R_SUCCEEDED(res))
             configExtraSaved = true;
-        }
     }
-    (void)Polari_LoadBacklightFromCfg();
 }
 
 void ConfigExtra_WriteConfigExtra(void)
@@ -216,8 +189,7 @@ void ConfigExtra_WriteConfigExtra(void)
         if(R_SUCCEEDED(res)) 
         {
             configExtraSaved = true;
-            ConfigExtra_UpdateMenuItem(8, configExtraSaved);
-            (void)Polari_SaveBacklightToCfg(configExtra.backlightLevel);
+            ConfigExtra_UpdateMenuItem(7, configExtraSaved);
         }
     }
 }
