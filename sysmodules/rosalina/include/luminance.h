@@ -26,6 +26,7 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <3ds/types.h>
 #include "utils.h"
 
@@ -34,8 +35,8 @@
 #define POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX 289
 #endif
 
-u32 getMinLuminancePreset(void);
-u32 getMaxLuminancePreset(void);
+u32 getMinLuminancePreset(bool top);
+u32 getMaxLuminancePreset(bool top);
 u32 getCurrentLuminance(bool top);
 void setBrightnessAlt(u32 lumTop, u32 lumBot);
 void Luminance_RecalibrateBrightnessDefaults(void);
