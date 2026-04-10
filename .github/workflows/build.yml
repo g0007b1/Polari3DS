@@ -29,7 +29,8 @@ jobs:
     - name: safedir
       run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
     # devkitarm image installs 3ds-dev but not general-tools; makerom lives in general-tools.
-    # Avoid dkp-pacman in CI (pkg.devkitpro.org often returns HTTP 403 from GitHub runners).
+    # Project_CTR ubuntu zip v0.19+ is built against GLIBC_2.38 (Ubuntu 24); this image is
+    # Debian Bookworm (~2.36) — use v0.18.4, or general-tools from devkitPro (same libc as image).
     - name: Build
       shell: bash
       run: |
@@ -38,9 +39,13 @@ jobs:
         export DEVKITARM="$DEVKITPRO/devkitARM"
         export PATH="$DEVKITPRO/tools/bin:$DEVKITARM/bin:/usr/local/bin:$PATH"
         if ! command -v makerom >/dev/null 2>&1; then
-          echo "makerom not in image; installing from Project_CTR release..."
+          echo "Trying devkitPro general-tools (makerom matched to this image libc)..."
+          dkp-pacman -S --needed --noconfirm general-tools 2>/dev/null || true
+        fi
+        if ! command -v makerom >/dev/null 2>&1; then
+          echo "Installing makerom v0.18.4 from Project_CTR (v0.19+ ubuntu build needs GLIBC_2.38; image is Bookworm ~2.36)."
           curl -fsSL -o /tmp/makerom.zip \
-            "https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.19.0/makerom-v0.19.0-ubuntu_x86_64.zip"
+            "https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.18.4/makerom-v0.18.4-ubuntu_x86_64.zip"
           unzip -oq /tmp/makerom.zip -d /tmp/makerom-extract
           f="$(find /tmp/makerom-extract -type f -name makerom | head -1)"
           if [ -z "$f" ] || [ ! -f "$f" ]; then
