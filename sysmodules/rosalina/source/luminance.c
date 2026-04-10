@@ -245,6 +245,55 @@ void setBrightnessAlt(u32 lumTop, u32 lumBot)
     *screenTop = luminanceToBrightness(lumTop, coeffsTop, 0, ratioTop);
 }
 
+static bool polari_lum_preset_tables_equal(void)
+{
+    return memcmp(s_blPwmData.luminanceLevels, s_blPwmData.luminanceLevelsBot,
+        sizeof(s_blPwmData.luminanceLevels)) == 0;
+}
+
+/*
+ * The OS uses one luminance target for both panels. After loading separate top/bottom
+ * calibration, map the current global luminance onto the bottom preset range and poke HW.
+ */
+void polari_apply_startup_luminance_split(void)
+{
+    u32 minT, maxT, minB, maxB, L, lumBot, curBot;
+
+    if (!hasTopScreen)
+        return;
+    if (!isServiceUsable("gsp::Lcd"))
+        return;
+
+    readCalibration();
+    if (polari_lum_preset_tables_equal())
+        return;
+
+    minT = getMinLuminancePreset(true);
+    maxT = getMaxLuminancePreset(true);
+    minB = getMinLuminancePreset(false);
+    maxB = getMaxLuminancePreset(false);
+
+    if (maxT <= minT || maxB <= minB)
+        return;
+
+    L = getCurrentLuminance(true);
+    curBot = getCurrentLuminance(false);
+    if (L != curBot)
+        return;
+
+    if (L <= minT)
+        lumBot = minB;
+    else if (L >= maxT)
+        lumBot = maxB;
+    else {
+        u64 den = (u64)(maxT - minT);
+        u64 num = (u64)(L - minT) * (u64)(maxB - minB);
+        lumBot = minB + (u32)(num / den);
+    }
+
+    setBrightnessAlt(L, lumBot);
+}
+
 void Luminance_RecalibrateBrightnessDefaults(void)
 {
     Draw_Lock();
