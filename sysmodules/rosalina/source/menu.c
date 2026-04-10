@@ -417,6 +417,7 @@ void menuThreadMain(void)
     }
 
     handleShellOpened();
+    Polari_ApplyDefaultScreenBacklights();
 
     hidInit(); // assume this doesn't fail
     isHidInitialized = true;
