@@ -50,9 +50,6 @@ void RosalinaMenu_Cheats(void);
 
 void RosalinaMenu_PowerPerformanceOptions(void);
 
-/** Apply configExtra.defaultBacklightMode (call with gsp::Lcd usable). */
-void Polari_ApplyDefaultScreenBacklights(void);
-
 void RosalinaMenu_ShowSystemInfo();
 
 bool rosalinaMenuShouldShowDebugInfo(void);
