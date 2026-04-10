@@ -40,7 +40,6 @@
 #include "memory.h"
 #include "ifile.h"
 #include "menus.h"
-#include "polari_backlight.h"
 #include "memory.h"
 #include "menus.h"
 #include "utils.h"
@@ -418,7 +417,6 @@ void menuThreadMain(void)
     }
 
     handleShellOpened();
-    Polari_ApplyBacklightLevel(configExtra.backlightLevel);
 
     hidInit(); // assume this doesn't fail
     isHidInitialized = true;
