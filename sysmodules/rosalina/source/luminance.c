@@ -130,6 +130,16 @@ u32 getCurrentLuminance(bool top)
     return brightnessToLuminance(brightness, coeffs, ratio);
 }
 
+/* Keep luminanceLevels[0]..[6] non-decreasing (OS expects monotonic presets; [5][6] must follow [4] for max). */
+static void polari_pwm_sync_chain(BlPwmData *d)
+{
+    unsigned i;
+    for (i = 1; i < 7; i++) {
+        if (d->luminanceLevels[i] < d->luminanceLevels[i - 1])
+            d->luminanceLevels[i] = d->luminanceLevels[i - 1];
+    }
+}
+
 void setBrightnessAlt(u32 lumTop, u32 lumBot) 
 {
     u32 regbaseTop = 0x10202200;
@@ -154,7 +164,7 @@ void Luminance_RecalibrateBrightnessDefaults(void)
     Draw_Unlock();
 
     u32 kHeld = 0;
-    int sel = 0, minBri = 0, maxBri = (int)POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX;
+    int sel = 0, maxBri = (int)POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX;
     char fmtbuf[0x40];
 
     cfguInit();
@@ -162,6 +172,7 @@ void Luminance_RecalibrateBrightnessDefaults(void)
     cfguExit();
     
     s_blPwmData.brightnessMin = 1;
+    polari_pwm_sync_chain(&s_blPwmData);
 
     do
     {
@@ -180,13 +191,21 @@ void Luminance_RecalibrateBrightnessDefaults(void)
             }
             else if (pressed & KEY_RIGHT)
             {
-                s_blPwmData.luminanceLevels[sel] += (kHeld & (KEY_L | KEY_R)) ? 10 : 1;
-                s_blPwmData.luminanceLevels[sel] = s_blPwmData.luminanceLevels[sel] > maxBri ? minBri : s_blPwmData.luminanceLevels[sel];
+                int step = (kHeld & (KEY_L | KEY_R)) ? 10 : 1;
+                s32 v = (s32)s_blPwmData.luminanceLevels[sel] + step;
+                if (v < 0) v = 0;
+                if (v > maxBri) v = maxBri;
+                s_blPwmData.luminanceLevels[sel] = (u16)v;
+                polari_pwm_sync_chain(&s_blPwmData);
             }
             else if (pressed & KEY_LEFT)
             {
-                s_blPwmData.luminanceLevels[sel] -= (kHeld & (KEY_L | KEY_R)) ? 10 : 1;
-                s_blPwmData.luminanceLevels[sel] = s_blPwmData.luminanceLevels[sel] > maxBri ? maxBri : s_blPwmData.luminanceLevels[sel];
+                int step = (kHeld & (KEY_L | KEY_R)) ? 10 : 1;
+                s32 v = (s32)s_blPwmData.luminanceLevels[sel] - step;
+                if (v < 0) v = 0;
+                if (v > maxBri) v = maxBri;
+                s_blPwmData.luminanceLevels[sel] = (u16)v;
+                polari_pwm_sync_chain(&s_blPwmData);
             }
         }
         
@@ -218,24 +237,29 @@ void Luminance_RecalibrateBrightnessDefaults(void)
             "  * %u is only presumed(!) safe for prolonged raw use.",
             (unsigned)POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX) + (SPACING_Y * 2);
 
-        sprintf(fmtbuf, "%c Level 1 value: %i", (sel == 0 ? '>' : ' '), s_blPwmData.luminanceLevels[0]);
+        sprintf(fmtbuf, "%c Level 1 value: %u", (sel == 0 ? '>' : ' '), (unsigned)s_blPwmData.luminanceLevels[0]);
         posY = Draw_DrawString(10, posY, COLOR_WHITE, fmtbuf) + SPACING_Y;
 
-        sprintf(fmtbuf, "%c Level 2 value: %i", (sel == 1 ? '>' : ' '), s_blPwmData.luminanceLevels[1]);
+        sprintf(fmtbuf, "%c Level 2 value: %u", (sel == 1 ? '>' : ' '), (unsigned)s_blPwmData.luminanceLevels[1]);
         posY = Draw_DrawString(10, posY, COLOR_WHITE, fmtbuf) + SPACING_Y;
 
-        sprintf(fmtbuf, "%c Level 3 value: %i", (sel == 2 ? '>' : ' '), s_blPwmData.luminanceLevels[2]);
+        sprintf(fmtbuf, "%c Level 3 value: %u", (sel == 2 ? '>' : ' '), (unsigned)s_blPwmData.luminanceLevels[2]);
         posY = Draw_DrawString(10, posY, COLOR_WHITE, fmtbuf) + SPACING_Y;
 
-        sprintf(fmtbuf, "%c Level 4 value: %i", (sel == 3 ? '>' : ' '), s_blPwmData.luminanceLevels[3]);
+        sprintf(fmtbuf, "%c Level 4 value: %u", (sel == 3 ? '>' : ' '), (unsigned)s_blPwmData.luminanceLevels[3]);
         posY = Draw_DrawString(10, posY, COLOR_WHITE, fmtbuf) + SPACING_Y;
 
-        sprintf(fmtbuf, "%c Level 5 value: %i", (sel == 4 ? '>' : ' '), s_blPwmData.luminanceLevels[4]);
-        posY = Draw_DrawString(10, posY, COLOR_WHITE, fmtbuf) + (SPACING_Y*2);
+        sprintf(fmtbuf, "%c Level 5 value: %u", (sel == 4 ? '>' : ' '), (unsigned)s_blPwmData.luminanceLevels[4]);
+        posY = Draw_DrawString(10, posY, COLOR_WHITE, fmtbuf) + SPACING_Y;
+
+        posY = Draw_DrawFormattedString(10, posY, COLOR_WHITE,
+            "  (auto) Boost slot: %u  Max cap: %u\n",
+            (unsigned)s_blPwmData.luminanceLevels[5], (unsigned)s_blPwmData.luminanceLevels[6]) + (SPACING_Y * 2);
 
         posY = Draw_DrawString(10, posY, COLOR_GREEN, "Controls:") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, " UP/DOWN to choose level to edit.") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, " RIGHT/LEFT for +/-1, +hold L1 or R1 for +/-10.") + SPACING_Y;
+        posY = Draw_DrawString(10, posY, COLOR_WHITE, " Higher presets auto-raise Boost/Max rows.") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, " Press START to save all value changes.") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, " Reboot may be required to see applied changes.") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, " Press B to exit.");
