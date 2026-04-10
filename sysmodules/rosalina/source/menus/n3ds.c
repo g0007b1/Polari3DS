@@ -26,6 +26,7 @@
 
 #include <3ds.h>
 #include <math.h>
+#include "qtm_n3ds_api_compat.h"
 #include "fmt.h"
 #include "menus/n3ds.h"
 #include "luma_config.h"
