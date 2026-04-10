@@ -26,17 +26,27 @@
 
 #include <3ds.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include "luminance.h"
 #include "utils.h"
 #include "draw.h"
+#include "ifile.h"
 #include "menu.h"
 #include "luma_config.h"
 #include "luma_shared_config.h"
 
 /* Extended BlPwmData: stock layout + bottom-only luminance curve + magic (Polari). */
 #define POLARI_BL_PWM_EXT_MAGIC 0x504F4C53u /* 'POLS' */
+/* Separate file: CFG block 0x50002 is fixed ~56 bytes; larger Set/Get may fail silently. */
+#define POLARI_BOT_LUM_FILE_MAGIC 0x504F4C44u /* 'POLD' */
+#define POLARI_BOT_LUM_PATH "/luma/polari_bot_lum.bin"
+
+typedef struct PolariBotLumFile {
+    u32 magic;
+    u16 bot[7];
+} PolariBotLumFile;
 
 typedef struct BlPwmData
 {
@@ -49,6 +59,10 @@ typedef struct BlPwmData
     u16  luminanceLevelsBot[7];
     u32  polari_ext_magic;
 } BlPwmData;
+
+/* Stock nn CFG block ends before luminanceLevelsBot[] (~56 bytes). */
+#define BL_PWM_CFG_SAVE_SIZE offsetof(BlPwmData, luminanceLevelsBot)
+_Static_assert(BL_PWM_CFG_SAVE_SIZE == 56, "expected stock BlPwmData CFG size");
 
 // Calibration, with (dubious) default values as fallback
 static BlPwmData s_blPwmData = {
@@ -104,15 +118,73 @@ static void polari_bot_lum_fallback_if_needed(void)
     }
 }
 
+static FS_ArchiveID polari_luma_archive(void)
+{
+    s64 out;
+    if (R_FAILED(svcGetSystemInfo(&out, 0x10000, 0x203)))
+        return ARCHIVE_SDMC;
+    return (bool)out ? ARCHIVE_SDMC : ARCHIVE_NAND_RW;
+}
+
+static void polari_load_bot_lum_from_sd(void)
+{
+    IFile file;
+    PolariBotLumFile blk;
+    Result res;
+    u64 total;
+
+    memset(&blk, 0, sizeof(blk));
+    res = IFile_Open(&file, polari_luma_archive(), fsMakePath(PATH_EMPTY, ""),
+        fsMakePath(PATH_ASCII, POLARI_BOT_LUM_PATH), FS_OPEN_READ);
+    if (R_FAILED(res))
+        return;
+    res = IFile_Read(&file, &total, &blk, sizeof(blk));
+    IFile_Close(&file);
+    if (R_FAILED(res) || total != sizeof(blk))
+        return;
+    if (blk.magic != POLARI_BOT_LUM_FILE_MAGIC)
+        return;
+    memcpy(s_blPwmData.luminanceLevelsBot, blk.bot, sizeof(blk.bot));
+    s_blPwmData.polari_ext_magic = POLARI_BL_PWM_EXT_MAGIC;
+}
+
+static void polari_save_bot_lum_to_sd(void)
+{
+    IFile file;
+    PolariBotLumFile blk;
+    u64 total;
+    Result res;
+
+    blk.magic = POLARI_BOT_LUM_FILE_MAGIC;
+    memcpy(blk.bot, s_blPwmData.luminanceLevelsBot, sizeof(blk.bot));
+    res = IFile_Open(&file, polari_luma_archive(), fsMakePath(PATH_EMPTY, ""),
+        fsMakePath(PATH_ASCII, POLARI_BOT_LUM_PATH), FS_OPEN_CREATE | FS_OPEN_WRITE);
+    if (R_FAILED(res))
+        return;
+    (void)IFile_Write(&file, &total, &blk, sizeof(blk), 0);
+    IFile_Close(&file);
+}
+
+static void polari_pwm_sync_row(u16 levels[7]);
+
+static void luminance_load_pwm_data(void)
+{
+    cfguInit();
+    (void)CFG_GetConfigInfoBlk8(BL_PWM_CFG_SAVE_SIZE, 0x50002, &s_blPwmData);
+    cfguExit();
+    polari_load_bot_lum_from_sd();
+    polari_bot_lum_fallback_if_needed();
+    polari_pwm_sync_row(s_blPwmData.luminanceLevels);
+    polari_pwm_sync_row(s_blPwmData.luminanceLevelsBot);
+}
+
 static void readCalibration(void)
 {
     static bool calibRead = false;
 
     if (!calibRead) {
-        cfguInit();
-        calibRead = R_SUCCEEDED(CFG_GetConfigInfoBlk8(sizeof(BlPwmData), 0x50002, &s_blPwmData));
-        cfguExit();
-        polari_bot_lum_fallback_if_needed();
+        luminance_load_pwm_data();
+        calibRead = true;
     }
 }
 
@@ -186,14 +258,9 @@ void Luminance_RecalibrateBrightnessDefaults(void)
     char fmtbuf[0x40];
     u16 *activeRow;
 
-    cfguInit();
-    CFG_GetConfigInfoBlk8(sizeof(BlPwmData), 0x50002, &s_blPwmData);
-    cfguExit();
-    polari_bot_lum_fallback_if_needed();
+    luminance_load_pwm_data();
 
     s_blPwmData.brightnessMin = 1;
-    polari_pwm_sync_row(s_blPwmData.luminanceLevels);
-    polari_pwm_sync_row(s_blPwmData.luminanceLevelsBot);
 
     do
     {
@@ -241,12 +308,13 @@ void Luminance_RecalibrateBrightnessDefaults(void)
         if(pressed & KEY_START)
         {
             s_blPwmData.polari_ext_magic = POLARI_BL_PWM_EXT_MAGIC;
+            polari_pwm_sync_row(s_blPwmData.luminanceLevels);
+            polari_pwm_sync_row(s_blPwmData.luminanceLevelsBot);
             cfguInit();
-            if(R_SUCCEEDED(CFG_SetConfigInfoBlk8(sizeof(BlPwmData), 0x50002, &s_blPwmData))) 
-            {
+            if (R_SUCCEEDED(CFG_SetConfigInfoBlk8(BL_PWM_CFG_SAVE_SIZE, 0x50002, &s_blPwmData)))
                 CFG_UpdateConfigSavegame();
-            }
             cfguExit();
+            polari_save_bot_lum_to_sd();
             break;
         }
 
@@ -302,7 +370,7 @@ void Luminance_RecalibrateBrightnessDefaults(void)
         posY = Draw_DrawString(10, posY, COLOR_WHITE, " UP/DOWN to choose level to edit.") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, " RIGHT/LEFT for +/-1, +hold L1 or R1 for +/-10.") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, " Higher presets auto-raise Boost/Max rows.") + SPACING_Y;
-        posY = Draw_DrawString(10, posY, COLOR_WHITE, " Press START to save (top + bottom tables).") + SPACING_Y;
+        posY = Draw_DrawString(10, posY, COLOR_WHITE, " Press START to save (CFG top + /luma/polari_bot_lum.bin).") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, " Reboot may be required to see applied changes.") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, " Press B to exit.");
 
