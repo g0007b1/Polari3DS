@@ -284,8 +284,10 @@ void RosalinaMenu_ChangeScreenBrightness(void)
     // Assume top and bottom screen luminances are the same (should be; if not, we'll set them to the same values).
     u32 luminanceTop = getCurrentLuminance(true);
     u32 luminanceBot = getCurrentLuminance(false);
-    u32 minLum = getMinLuminancePreset();
-    u32 maxLum = getMaxLuminancePreset();
+    u32 minLumTop = getMinLuminancePreset(true);
+    u32 minLumBot = getMinLuminancePreset(false);
+    u32 maxLumTop = getMaxLuminancePreset(true);
+    u32 maxLumBot = getMaxLuminancePreset(false);
     u32 trueMax = POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX; // https://www.3dbrew.org/wiki/GSPLCD:SetBrightnessRaw
     u32 trueMin = 0;
     // hacky but N3DS coeffs for top screen don't seem to work and O3DS coeffs when using N3DS return 173 max brightness
@@ -300,9 +302,11 @@ void RosalinaMenu_ChangeScreenBrightness(void)
             10,
             posY,
             COLOR_WHITE,
-            "Preset: %lu to %lu, Extended: 0 to %u.\n",
-            minLum,
-            maxLum,
+            "Top preset: %lu–%lu  Bottom: %lu–%lu  Extended: 0–%u.\n",
+            (unsigned long)minLumTop,
+            (unsigned long)maxLumTop,
+            (unsigned long)minLumBot,
+            (unsigned long)maxLumBot,
             (unsigned)POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX
         );
          posY = Draw_DrawFormattedString(
@@ -324,8 +328,9 @@ void RosalinaMenu_ChangeScreenBrightness(void)
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "Hold X/A for Top/Bottom screen only. \n");
         posY = Draw_DrawFormattedString(
             10, posY, COLOR_WHITE,
-            "Hold L/R to allow below preset min (down to 0; <%lu may glitch).\n",
-            (unsigned long)minLum);
+            "Hold L/R to allow below per-screen min (0; <%lu top / <%lu bot may glitch).\n",
+            (unsigned long)minLumTop,
+            (unsigned long)minLumBot);
         if (hasTopScreen) { posY = Draw_DrawString(10, posY, COLOR_WHITE, "Press Y to toggle screen backlights.\n\n"); }
         
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "Press START to begin, B to exit.\n\n");
@@ -431,11 +436,11 @@ void RosalinaMenu_ChangeScreenBrightness(void)
                 /* Without L/R: still cap at POLARI extended max (not calibration max ~172), or Up/Down appears "broken". */
                 lumTop = lumTop > (s32)trueMax ? (s32)trueMax : lumTop;
                 lumBot = lumBot > (s32)trueMax ? (s32)trueMax : lumBot;
-                lumTop = lumTop < (s32)minLum ? (s32)minLum : lumTop;
-                lumBot = lumBot < (s32)minLum ? (s32)minLum : lumBot;
+                lumTop = lumTop < (s32)minLumTop ? (s32)minLumTop : lumTop;
+                lumBot = lumBot < (s32)minLumBot ? (s32)minLumBot : lumBot;
             }
 
-            if (lumTop >= (s32)minLum && lumBot >= (s32)minLum) {
+            if (lumTop >= (s32)minLumTop && lumBot >= (s32)minLumBot) {
                 GSPLCD_SetBrightnessRaw(BIT(GSP_SCREEN_TOP), lumTop);
                 GSPLCD_SetBrightnessRaw(BIT(GSP_SCREEN_BOTTOM), lumBot);
             }       
