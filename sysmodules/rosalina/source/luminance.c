@@ -154,7 +154,7 @@ void Luminance_RecalibrateBrightnessDefaults(void)
     Draw_Unlock();
 
     u32 kHeld = 0;
-    int sel = 0, minBri = 0, maxBri = 172;
+    int sel = 0, minBri = 0, maxBri = (int)POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX;
     char fmtbuf[0x40];
 
     cfguInit();
@@ -213,7 +213,10 @@ void Luminance_RecalibrateBrightnessDefaults(void)
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "  * brightness preview not possible here\n    due to glitch risk.") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "  * test values via 'Change screen brightness'.") + SPACING_Y;
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "  * avoid frequent use to minimise NAND(!) wear.") + SPACING_Y;
-        posY = Draw_DrawString(10, posY, COLOR_WHITE, "  * 172 is only presumed(!) safe for prolonged use.") + (SPACING_Y*2);
+        posY = Draw_DrawFormattedString(
+            10, posY, COLOR_WHITE,
+            "  * %u is only presumed(!) safe for prolonged raw use.",
+            (unsigned)POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX) + (SPACING_Y * 2);
 
         sprintf(fmtbuf, "%c Level 1 value: %i", (sel == 0 ? '>' : ' '), s_blPwmData.luminanceLevels[0]);
         posY = Draw_DrawString(10, posY, COLOR_WHITE, fmtbuf) + SPACING_Y;
