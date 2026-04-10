@@ -13,6 +13,7 @@
 #include "menus/n3ds.h"
 #include "menus/screen_filters.h"
 #include "config_template_ini.h"
+#include "polari_backlight.h"
 
 #include "configExtra_ini.h"
 
@@ -24,7 +25,7 @@ config_extra configExtra = {
     .toggleBottomLcd = false,
     .turnLedsOffStandby = false,
     .perGamePlugin = false,
-    .defaultBacklightMode = 0,
+    .backlightLevel = 0,
 };
 bool configExtraSaved = false;
 
@@ -36,7 +37,7 @@ static const char menuText[9][48] = {
     "St+Se toggle bottom LCD in menu",
     "Disable led during standby",
     "Enable plugin loader per-game",
-    "Default screen backlights",
+    "Backlight level (0-5)",
     "Save config. Changes saved"
 };
 
@@ -121,11 +122,12 @@ void ConfigExtra_SetPerGamePlugin(void)
 
 void ConfigExtra_SetDefaultBacklights(void)
 {
-    configExtra.defaultBacklightMode = (u8)((configExtra.defaultBacklightMode + 1) % 3);
+    configExtra.backlightLevel = (u8)((configExtra.backlightLevel + 1) % (POLARI_BACKLIGHT_LEVEL_MAX + 1));
+    Polari_ApplyBacklightLevel(configExtra.backlightLevel);
+    (void)Polari_SaveBacklightToCfg(configExtra.backlightLevel);
     ConfigExtra_UpdateDefaultBacklightMenuItem();
     configExtraSaved = false;
     ConfigExtra_UpdateMenuItem(8, configExtraSaved);
-    Polari_ApplyDefaultScreenBacklights();
 }
 
 void ConfigExtra_UpdateMenuItem(int menuIndex, bool value)
@@ -136,10 +138,8 @@ void ConfigExtra_UpdateMenuItem(int menuIndex, bool value)
 
 void ConfigExtra_UpdateDefaultBacklightMenuItem(void)
 {
-    static const char *modes[] = { "both on", "top only", "bottom only" };
-    u8 m = configExtra.defaultBacklightMode % 3u;
-
-    sprintf(menuDisplay[7], "%s: [%s]", menuText[7], modes[m]);
+    sprintf(menuDisplay[7], "%s: %u %s", menuText[7], (unsigned)configExtra.backlightLevel,
+        Polari_BacklightLevelLabel(configExtra.backlightLevel));
     configExtraMenu.items[7].title = menuDisplay[7];
 }
 
@@ -182,10 +182,11 @@ void ConfigExtra_ReadConfigExtra(void)
         if(R_SUCCEEDED(res)) 
         {
             if (total < sizeof(configExtra))
-                configExtra.defaultBacklightMode = 0;
+                configExtra.backlightLevel = 0;
             configExtraSaved = true;
         }
     }
+    (void)Polari_LoadBacklightFromCfg();
 }
 
 void ConfigExtra_WriteConfigExtra(void)
@@ -216,6 +217,7 @@ void ConfigExtra_WriteConfigExtra(void)
         {
             configExtraSaved = true;
             ConfigExtra_UpdateMenuItem(8, configExtraSaved);
+            (void)Polari_SaveBacklightToCfg(configExtra.backlightLevel);
         }
     }
 }
