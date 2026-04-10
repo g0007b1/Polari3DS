@@ -483,10 +483,16 @@ void SysConfigMenu_ChangeScreenBrightness(void)
     Draw_Unlock();
 
     // gsp:LCD GetLuminance is stubbed on O3DS so we have to implement it ourselves... damn it.
-    // Assume top and bottom screen luminances are the same (should be; if not, we'll set them to the same values).
+    // One luminance value applied to both screens — clamp to overlap of top/bottom preset ranges.
     u32 luminance = getCurrentLuminance(false);
-    u32 minLum = getMinLuminancePreset();
-    u32 maxLum = getMaxLuminancePreset();
+    u32 minLT = getMinLuminancePreset(true);
+    u32 minLB = getMinLuminancePreset(false);
+    u32 maxLT = getMaxLuminancePreset(true);
+    u32 maxLB = getMaxLuminancePreset(false);
+    u32 minLum = minLT > minLB ? minLT : minLB;
+    u32 maxLum = maxLT < maxLB ? maxLT : maxLB;
+    if (maxLum < minLum)
+        maxLum = minLum;
 
     do
     {
