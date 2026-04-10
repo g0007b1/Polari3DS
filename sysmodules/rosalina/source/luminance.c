@@ -233,16 +233,28 @@ void setBrightnessAlt(u32 lumTop, u32 lumBot)
 {
     u32 regbaseTop = 0x10202200;
     u32 regbaseBot = 0x10202A00; 
-    u32 offset = 0x40; // https://www.3dbrew.org/wiki/LCD_Registers
+    u32 offset = 0x40; // https://www.3dbrew.org/wiki/LCD_Registers — bits 9-0 PWM
     const float *coeffsTop = s_blPwmData.coeffs[1];
     const float *coeffsBot = s_blPwmData.coeffs[0];
     float ratioTop = getPwmRatio(s_blPwmData.brightnessMax, REG32(regbaseTop + 0x44));
     float ratioBot = getPwmRatio(s_blPwmData.brightnessMax, REG32(regbaseBot + 0x44));
-    u8 *screenTop = (u8 *)PA_PTR(regbaseTop +  offset);
-    u8 *screenBot = (u8 *)PA_PTR(regbaseBot +  offset);
+    u32 valTop = luminanceToBrightness(lumTop, coeffsTop, 0, ratioTop) & 0x3FFu;
+    u32 valBot = luminanceToBrightness(lumBot, coeffsBot, 0, ratioBot) & 0x3FFu;
 
-    *screenBot = luminanceToBrightness(lumBot, coeffsBot, 0, ratioBot);
-    *screenTop = luminanceToBrightness(lumTop, coeffsTop, 0, ratioTop);
+    REG32(regbaseTop + offset) = (REG32(regbaseTop + offset) & ~0x3FFu) | valTop;
+    REG32(regbaseBot + offset) = (REG32(regbaseBot + offset) & ~0x3FFu) | valBot;
+}
+
+/* Same path as "Change screen brightness" when luminance is in range (not u8-truncated MMIO). */
+static void polari_apply_dual_luminance_gsp(u32 lumTop, u32 lumBot)
+{
+    svcKernelSetState(0x10000, 2);
+    if (R_SUCCEEDED(gspLcdInit())) {
+        GSPLCD_SetBrightnessRaw(BIT(GSP_SCREEN_TOP), lumTop);
+        GSPLCD_SetBrightnessRaw(BIT(GSP_SCREEN_BOTTOM), lumBot);
+        gspLcdExit();
+    }
+    svcKernelSetState(0x10000, 2);
 }
 
 static bool polari_lum_preset_tables_equal(void)
@@ -255,9 +267,9 @@ static bool polari_lum_preset_tables_equal(void)
  * The OS uses one luminance target for both panels. After loading separate top/bottom
  * calibration, map the current global luminance onto the bottom preset range and poke HW.
  *
- * Cold-boot: getCurrentLuminance() can return garbage/low (~32) for hundreds of ms; applying
- * setBrightnessAlt with that L dims both panels. Wait and take the max of several paired
- * (top==bottom) samples before mapping.
+ * Cold-boot: getCurrentLuminance() can read low until PWM stabilizes — sample paired (top==bottom)
+ * values and take the max. Apply with GSPLCD_SetBrightnessRaw (same as brightness menu), not
+ * setBrightnessAlt MMIO alone (the old u8 poke truncated duty and could read back as ~32).
  */
 void polari_apply_startup_luminance_split(void)
 {
@@ -281,7 +293,7 @@ void polari_apply_startup_luminance_split(void)
     if (maxT <= minT || maxB <= minB)
         return;
 
-    svcSleepThread(2500 * 1000LL);
+    svcSleepThread(1200 * 1000LL);
 
     for (r = 0; r < 2; r++) {
         best = 0;
@@ -290,12 +302,11 @@ void polari_apply_startup_luminance_split(void)
             b = getCurrentLuminance(false);
             if (t == b && t > best)
                 best = t;
-            svcSleepThread(350 * 1000LL);
+            svcSleepThread(200 * 1000LL);
         }
         L = best;
-        /* If calibration allows a bright HUD but we only ever saw a cold-read low L, wait once more. */
         if (r == 0 && maxT > minT + 80 && L < minT + 40)
-            svcSleepThread(3000 * 1000LL);
+            svcSleepThread(2000 * 1000LL);
         else
             break;
     }
@@ -313,7 +324,7 @@ void polari_apply_startup_luminance_split(void)
         lumBot = minB + (u32)(num / den);
     }
 
-    setBrightnessAlt(L, lumBot);
+    polari_apply_dual_luminance_gsp(L, lumBot);
 }
 
 void Luminance_RecalibrateBrightnessDefaults(void)
