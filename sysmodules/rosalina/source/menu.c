@@ -427,6 +427,7 @@ void menuThreadMain(void)
     bool instantReboot = ((config >> (u32)NOERRDISPINSTANTREBOOT) & 1) != 0;
 
     menuReadScreenTypes();
+    polari_apply_startup_luminance_split();
 
     while(!preTerminationRequested)
     {
