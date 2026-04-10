@@ -39,4 +39,5 @@ u32 getMinLuminancePreset(bool top);
 u32 getMaxLuminancePreset(bool top);
 u32 getCurrentLuminance(bool top);
 void setBrightnessAlt(u32 lumTop, u32 lumBot);
+void polari_apply_startup_luminance_split(void);
 void Luminance_RecalibrateBrightnessDefaults(void);
