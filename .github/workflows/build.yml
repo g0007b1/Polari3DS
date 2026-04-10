@@ -31,6 +31,7 @@ jobs:
     # devkitarm image installs 3ds-dev but not general-tools; makerom lives in general-tools.
     # Project_CTR ubuntu zip v0.19+ is built against GLIBC_2.38 (Ubuntu 24); this image is
     # Debian Bookworm (~2.36) — use v0.18.4, or general-tools from devkitPro (same libc as image).
+    # firmtool (Python, top-level boot.firm) is not on PATH in the image — pip install from TuxSH/firmtool (v1.1+ per Makefile).
     - name: Build
       shell: bash
       run: |
@@ -54,6 +55,15 @@ jobs:
           install -m755 "$f" /usr/local/bin/makerom
         fi
         command -v makerom
+        if ! command -v firmtool >/dev/null 2>&1; then
+          if ! python3 -m pip --version >/dev/null 2>&1; then
+            apt-get update -qq
+            apt-get install -y -qq python3-pip
+          fi
+          python3 -m pip install --break-system-packages --no-cache-dir \
+            "git+https://github.com/TuxSH/firmtool.git@v1.4"
+        fi
+        command -v firmtool
         make -j$(nproc --all)
     - uses: actions/upload-artifact@v4
       with:
