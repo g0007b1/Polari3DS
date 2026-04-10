@@ -31,6 +31,7 @@ jobs:
     # devkitarm image installs 3ds-dev but not general-tools; makerom lives in general-tools.
     # Avoid dkp-pacman in CI (pkg.devkitpro.org often returns HTTP 403 from GitHub runners).
     - name: Build
+      shell: bash
       run: |
         set -euo pipefail
         export DEVKITPRO=/opt/devkitpro
