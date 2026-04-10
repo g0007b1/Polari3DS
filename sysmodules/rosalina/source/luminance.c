@@ -245,18 +245,6 @@ void setBrightnessAlt(u32 lumTop, u32 lumBot)
     REG32(regbaseBot + offset) = (REG32(regbaseBot + offset) & ~0x3FFu) | valBot;
 }
 
-/* Same path as "Change screen brightness" when luminance is in range (not u8-truncated MMIO). */
-static void polari_apply_dual_luminance_gsp(u32 lumTop, u32 lumBot)
-{
-    svcKernelSetState(0x10000, 2);
-    if (R_SUCCEEDED(gspLcdInit())) {
-        GSPLCD_SetBrightnessRaw(BIT(GSP_SCREEN_TOP), lumTop);
-        GSPLCD_SetBrightnessRaw(BIT(GSP_SCREEN_BOTTOM), lumBot);
-        gspLcdExit();
-    }
-    svcKernelSetState(0x10000, 2);
-}
-
 static bool polari_lum_preset_tables_equal(void)
 {
     return memcmp(s_blPwmData.luminanceLevels, s_blPwmData.luminanceLevelsBot,
@@ -267,9 +255,9 @@ static bool polari_lum_preset_tables_equal(void)
  * The OS uses one luminance target for both panels. After loading separate top/bottom
  * calibration, map the current global luminance onto the bottom preset range and poke HW.
  *
- * Cold-boot: getCurrentLuminance() can read low until PWM stabilizes — sample paired (top==bottom)
- * values and take the max. Apply with GSPLCD_SetBrightnessRaw (same as brightness menu), not
- * setBrightnessAlt MMIO alone (the old u8 poke truncated duty and could read back as ~32).
+ * Cold-boot: sample paired (top==bottom) luminance and map bottom to its preset range.
+ * Do not call gspLcdInit here — extra LCD sessions during early Rosalina init can hang the system.
+ * Use setBrightnessAlt (full REG32 duty, bits 9:0); the old u8-only write was wrong and unsafe.
  */
 void polari_apply_startup_luminance_split(void)
 {
@@ -324,7 +312,7 @@ void polari_apply_startup_luminance_split(void)
         lumBot = minB + (u32)(num / den);
     }
 
-    polari_apply_dual_luminance_gsp(L, lumBot);
+    setBrightnessAlt(L, lumBot);
 }
 
 void Luminance_RecalibrateBrightnessDefaults(void)
