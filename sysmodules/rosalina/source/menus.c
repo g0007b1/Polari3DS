@@ -52,11 +52,6 @@
 #include "config_template_ini.h"
 #include "configExtra_ini.h"
 
-/* Raw brightness cap when holding L/R (extended). Default stock Polari: 172. */
-#ifndef POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX
-#define POLARI_ROSALINA_BRIGHTNESS_TRUE_MAX 289
-#endif
-
 Menu rosalinaMenu = {
     "Rosalina menu",
     {
@@ -288,7 +283,10 @@ void RosalinaMenu_ChangeScreenBrightness(void)
         posY = Draw_DrawString(10, posY, COLOR_GREEN, "Controls:\n");
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "Up/Down for +/-1, Right/Left for +/-10.\n");
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "Hold X/A for Top/Bottom screen only. \n");
-        posY = Draw_DrawFormattedString(10, posY, COLOR_WHITE, "Hold L/R for extended limits (<%lu may glitch). \n", minLum);
+        posY = Draw_DrawFormattedString(
+            10, posY, COLOR_WHITE,
+            "Hold L/R to allow below preset min (down to 0; <%lu may glitch).\n",
+            (unsigned long)minLum);
         if (hasTopScreen) { posY = Draw_DrawString(10, posY, COLOR_WHITE, "Press Y to toggle screen backlights.\n\n"); }
         
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "Press START to begin, B to exit.\n\n");
@@ -388,8 +386,9 @@ void RosalinaMenu_ChangeScreenBrightness(void)
             }
             else
             {
-                lumTop = lumTop > (s32)maxLum ? (s32)maxLum : lumTop;
-                lumBot = lumBot > (s32)maxLum ? (s32)maxLum : lumBot;
+                /* Without L/R: still cap at POLARI extended max (not calibration max ~172), or Up/Down appears "broken". */
+                lumTop = lumTop > (s32)trueMax ? (s32)trueMax : lumTop;
+                lumBot = lumBot > (s32)trueMax ? (s32)trueMax : lumBot;
                 lumTop = lumTop < (s32)minLum ? (s32)minLum : lumTop;
                 lumBot = lumBot < (s32)minLum ? (s32)minLum : lumBot;
             }
