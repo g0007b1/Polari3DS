@@ -25,8 +25,8 @@ typedef struct {
 	bool toggleBottomLcd;
 	bool turnLedsOffStandby;
 	bool perGamePlugin;
-	/* 0 = both on, 1 = top screen only, 2 = bottom screen only (matches Y-toggle order in brightness menu) */
-	u8 defaultBacklightMode;
+	/* 0–5: see Polari_BacklightLevelLabel / polari_backlight.c */
+	u8 backlightLevel;
 } config_extra;
 
 extern config_extra configExtra;
